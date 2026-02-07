@@ -58,15 +58,7 @@ export function discoverNewsAtSettlement(state: GameState): void {
     }
   }
 
-  if (newNewsCount > 0) {
-    // Add a separator so the player notices new intel
-    eventLog.push({
-      turn: state.turn,
-      message: `You hear ${newNewsCount} piece${newNewsCount > 1 ? 's' : ''} of news in ${loc.name}.`,
-      type: 'social',
-      locationId: loc.id,
-    });
-  }
+  // News entries speak for themselves — no extra summary needed
 }
 
 /** Mark an event as known and add it to the visible log */

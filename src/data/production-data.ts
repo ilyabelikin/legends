@@ -266,7 +266,7 @@ export const PRODUCTION_RECIPES: ProductionRecipe[] = [
     name: 'Catch Fish',
     buildingType: 'dock',
     inputs: [],
-    outputs: [{ resourceId: 'fish', quantity: 3, baseQuality: 0.8 }],
+    outputs: [{ resourceId: 'fish', quantity: 4, baseQuality: 0.8 }],
     duration: 1,
     skillRequired: 'fishing',
     minimumSkillLevel: 0,

@@ -19,17 +19,18 @@ export const PALETTE = {
   desertDark: '#b8922c',
 
   // Grass
-  grassDark: '#2d6b1e',
-  grass: '#4a8c3a',
-  grassLight: '#6aac5a',
+  grassDark: '#3a7a28',
+  grass: '#5a9c3a',
+  grassLight: '#78b858',
   dryGrass: '#9ca44c',
 
-  // Forest
-  treeDark: '#1a4c0c',
-  tree: '#2d6b1e',
-  treeLight: '#4a8c3a',
-  jungleTree: '#1a6b1a',
-  jungleTreeDark: '#0d4d0d',
+  // Forest — distinctly darker & richer than grass
+  treeDark: '#14420a',
+  tree: '#1e5810',
+  treeLight: '#2a6e18',
+  treeHighlight: '#3c8828',
+  jungleTree: '#107010',
+  jungleTreeDark: '#084c08',
 
   // Hills / mountains
   hillGrass: '#8c9c5c',

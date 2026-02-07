@@ -217,20 +217,25 @@ function tickConsumption(loc: Location, world: World): void {
   const popCount = loc.residentIds.length;
   if (popCount === 0) return;
 
-  // Each person needs ~0.5 food units per turn
-  const foodNeeded = popCount * 0.5;
+  // Each person needs ~0.3 food units per turn
+  const foodNeeded = popCount * 0.3;
   let foodConsumed = 0;
 
-  // Try to consume food (bread first, then meat, then fish, then wheat, then berries)
-  const foodPriority = ['bread', 'meat', 'fish', 'wheat', 'berries', 'exotic_fruit'];
+  // Try to consume food — prefer processed food, preserve raw stock for trade
+  const foodPriority = ['bread', 'meat', 'fish', 'berries', 'wheat', 'exotic_fruit'];
 
   for (const foodId of foodPriority) {
     if (foodConsumed >= foodNeeded) break;
-    const remaining = foodNeeded - foodConsumed;
 
     for (let i = loc.storage.length - 1; i >= 0; i--) {
+      if (foodConsumed >= foodNeeded) break;
       if (loc.storage[i].resourceId === foodId) {
-        const take = Math.min(remaining - foodConsumed, loc.storage[i].quantity);
+        // Reserve at least 3 units of each food type for trade/visitors
+        const reserve = 3;
+        const available = Math.max(0, loc.storage[i].quantity - reserve);
+        if (available <= 0) continue;
+
+        const take = Math.min(foodNeeded - foodConsumed, available);
         loc.storage[i].quantity -= take;
         foodConsumed += take;
         if (loc.storage[i].quantity <= 0) {

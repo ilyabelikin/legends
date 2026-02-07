@@ -277,41 +277,86 @@ function drawTree(ctx: OffscreenCanvasRenderingContext2D, x: number, y: number, 
   ctx.fillStyle = '#5a3a1a';
   ctx.fillRect(x, y - 4, 2, 5);
 
-  // Foliage
-  let foliageColor: string;
-  if (season === 'autumn') foliageColor = '#c07030';
-  else if (season === 'winter') foliageColor = '#6c8c5c';
-  else foliageColor = PALETTE.tree;
+  // Foliage — dark base with lighter highlight layer
+  let baseColor: string;
+  let highlightColor: string;
+  if (season === 'autumn') {
+    baseColor = '#a85820';
+    highlightColor = '#c87838';
+  } else if (season === 'winter') {
+    baseColor = '#4a6840';
+    highlightColor = '#5c7c50';
+  } else {
+    baseColor = PALETTE.tree;
+    highlightColor = PALETTE.treeLight;
+  }
 
-  ctx.fillStyle = foliageColor;
+  // Dark base
+  ctx.fillStyle = baseColor;
   ctx.fillRect(x - 2, y - 8, 6, 3);
   ctx.fillRect(x - 1, y - 10, 4, 2);
   ctx.fillRect(x, y - 11, 2, 1);
+
+  // Light highlight (top-right)
+  ctx.fillStyle = highlightColor;
+  ctx.fillRect(x, y - 10, 3, 1);
+  ctx.fillRect(x + 1, y - 8, 2, 1);
 }
 
 /** Draw a large tree (for dense forests / jungles) */
 function drawLargeTree(ctx: OffscreenCanvasRenderingContext2D, x: number, y: number, season: Season, isJungle: boolean): void {
   // Trunk
-  ctx.fillStyle = isJungle ? '#3a2a0a' : '#5a3a1a';
+  ctx.fillStyle = isJungle ? '#3a2a0a' : '#4a2a10';
   ctx.fillRect(x, y - 6, 3, 7);
 
-  // Foliage
-  let color: string = isJungle ? PALETTE.jungleTree : PALETTE.treeDark;
-  if (season === 'autumn' && !isJungle) color = '#a06020';
+  // Foliage — dark base
+  let baseColor: string;
+  let midColor: string;
+  let highlightColor: string;
+  if (isJungle) {
+    baseColor = PALETTE.jungleTreeDark;
+    midColor = PALETTE.jungleTree;
+    highlightColor = '#18881a';
+  } else if (season === 'autumn') {
+    baseColor = '#8a4818';
+    midColor = '#a86020';
+    highlightColor = '#c08030';
+  } else if (season === 'winter') {
+    baseColor = '#3a5430';
+    midColor = '#4a6840';
+    highlightColor = '#587850';
+  } else {
+    baseColor = PALETTE.treeDark;
+    midColor = PALETTE.tree;
+    highlightColor = PALETTE.treeLight;
+  }
 
-  ctx.fillStyle = color;
+  // Shadow layer (bottom-left)
+  ctx.fillStyle = baseColor;
   ctx.fillRect(x - 3, y - 10, 9, 4);
   ctx.fillRect(x - 2, y - 13, 7, 3);
+
+  // Mid layer
+  ctx.fillStyle = midColor;
+  ctx.fillRect(x - 2, y - 12, 6, 3);
   ctx.fillRect(x - 1, y - 15, 5, 2);
+
+  // Highlight (top-right)
+  ctx.fillStyle = highlightColor;
+  ctx.fillRect(x, y - 14, 3, 2);
+  ctx.fillRect(x + 1, y - 10, 3, 1);
   ctx.fillRect(x, y - 16, 3, 1);
 }
 
 /** Draw a bush */
 function drawBush(ctx: OffscreenCanvasRenderingContext2D, x: number, y: number, season: Season): void {
-  const color = season === 'winter' ? PALETTE.dryGrass : PALETTE.grassLight;
-  ctx.fillStyle = color;
+  // Base
+  ctx.fillStyle = season === 'winter' ? '#5a6848' : PALETTE.treeLight;
   ctx.fillRect(x - 1, y - 3, 4, 2);
+  // Highlight
+  ctx.fillStyle = season === 'winter' ? '#6c7c58' : PALETTE.treeHighlight;
   ctx.fillRect(x, y - 4, 2, 1);
+  ctx.fillRect(x + 1, y - 3, 1, 1);
 }
 
 /** Water shimmer effect */

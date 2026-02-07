@@ -13,19 +13,19 @@ Open `http://localhost:3000` in your browser.
 
 ## Controls
 
-| Key | Action |
-|-----|--------|
-| **W/A/S/D/Q/E** | Move party (isometric directions: NW/W/SE/E/SW/NE) |
-| **Arrow Keys** | Move party (N/W/S/E) |
-| **Enter / Space** | End turn (advance world simulation) |
-| **R** | Rest (heal at settlements, camp in wilderness) |
-| **F** | Buy food at a settlement |
-| **C** | Center camera on party |
-| **+/-** | Zoom in/out |
-| **P** | Pause simulation |
-| **Mouse Drag** | Pan camera |
-| **Scroll Wheel** | Zoom |
-| **Click** | Select tile for info |
+| Key               | Action                                             |
+| ----------------- | -------------------------------------------------- |
+| **W/A/S/D/Q/E**   | Move party (isometric directions: NW/W/SE/E/SW/NE) |
+| **Arrow Keys**    | Move party (N/W/S/E)                               |
+| **Enter / Space** | End turn (advance world simulation)                |
+| **R**             | Rest (heal at settlements, camp in wilderness)     |
+| **F**             | Buy food at a settlement                           |
+| **C**             | Center camera on party                             |
+| **+/-**           | Zoom in/out                                        |
+| **P**             | Pause simulation                                   |
+| **Mouse Drag**    | Pan camera                                         |
+| **Scroll Wheel**  | Zoom                                               |
+| **Click**         | Select tile for info                               |
 
 ## World Generation
 
@@ -37,7 +37,7 @@ The world is procedurally generated in layers:
 4. **Biomes** — Classified from elevation, moisture, and temperature (13 biome types)
 5. **Resources** — Placed according to biome suitability
 6. **Settlements** — Scored and placed based on resource access, water proximity, and terrain
-7. **Roads** — A* pathfinding connects settlements with paths, roads, and highways
+7. **Roads** — A\* pathfinding connects settlements with paths, roads, and highways
 8. **Population** — Families created with jobs, skills, relationships
 9. **Creatures** — Wildlife and monsters placed by biome
 10. **Politics** — Countries formed, rulers assigned, diplomacy established
@@ -49,6 +49,7 @@ Ocean, Beach, Desert, Grassland, Forest, Dense Forest, Jungle, Hills, Mountains,
 ## Economy
 
 ### Resources
+
 - **Raw**: Wood, Stone, Iron Ore, Gold Ore, Coal, Salt
 - **Food**: Wheat, Fish, Berries, Meat, Exotic Fruit, Bread, Ale
 - **Materials**: Wool, Herbs, Rare Herbs, Hides
@@ -56,14 +57,17 @@ Ocean, Beach, Desert, Grassland, Forest, Dense Forest, Jungle, Hills, Mountains,
 - **Military**: Weapons, Armor
 
 ### Production Chains
+
 Resources flow through production chains: `Iron Ore + Coal → Iron Ingot → Weapons/Tools/Armor`
 
 Each settlement has buildings with workers who produce goods based on available inputs. Worker skill level affects quality and speed. Seasonal effects modify production rates.
 
 ### Trade Routes
+
 Settlements with complementary supply/demand automatically establish trade routes. Goods are transported by hauling, cart, horse cart, or ship depending on distance. Routes can be raided by bandits.
 
 ### Storage & Spoilage
+
 Resources require appropriate storage (dry, cold, secure). Perishable goods spoil over time. Storage capacity limits how much a settlement can stockpile.
 
 ## Characters
@@ -77,10 +81,13 @@ Every human in the world is modeled individually:
 - **Relationships**: Spouse, Parent, Child, Lord, Vassal, Friend, Rival, etc.
 
 ### Jobs
+
 Farmer, Miner, Lumberjack, Fisher, Blacksmith, Weaver, Baker, Brewer, Tanner, Merchant, Soldier, Guard, Hunter, Herbalist, Scholar, Priest, Noble, Adventurer
 
 ### AI Decision Engine
+
 NPCs make probabilistic decisions each turn based on:
+
 - Current needs (hunger drives food-seeking, low safety drives caution)
 - Personality traits (ambitious characters seek advancement, curious ones explore)
 - Available options at their location
@@ -100,11 +107,13 @@ All AI weights are configurable in `src/ai/decision-engine.ts`.
 ## Creatures & Events
 
 ### Creatures
+
 - **Wildlife**: Wolves, Bears, Deer, Sheep, Boars
 - **Dragons**: Named legendary creatures that migrate, hoard treasure, and attack settlements
 - **Bandits**: Outlaws that raid trade routes and prey on travelers
 
 ### Emergent Events
+
 - Dragon attacks on settlements
 - Bandit raids on poorly defended villages
 - War declarations between rival nations

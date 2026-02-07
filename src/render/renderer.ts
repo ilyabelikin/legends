@@ -72,11 +72,11 @@ export class Renderer {
       }
     }
 
-    // Render locations (on top of tiles)
+    // Render locations (only on explored tiles)
     for (let y = range.minY; y <= range.maxY; y++) {
       for (let x = range.minX; x <= range.maxX; x++) {
         const tile = world.tiles[y][x];
-        if (tile.locationId) {
+        if (tile.locationId && tile.explored) {
           const loc = world.locations.get(tile.locationId);
           if (loc && !loc.isDestroyed) {
             this.renderLocation(ctx, loc, world.countries.get(loc.countryId ?? '')?.color ?? null, tile.elevation);
@@ -85,12 +85,12 @@ export class Renderer {
       }
     }
 
-    // Render creatures
+    // Render creatures (only on visible tiles)
     for (const creature of world.creatures.values()) {
       const { x, y } = creature.position;
       if (x >= range.minX && x <= range.maxX && y >= range.minY && y <= range.maxY) {
         const tile = world.tiles[y][x];
-        if (tile.explored || tile.visible) {
+        if (tile.visible) {
           this.renderCreature(ctx, creature, tile.elevation);
         }
       }
@@ -106,16 +106,17 @@ export class Renderer {
         world.tiles[state.selectedTile.y]?.[state.selectedTile.x]?.elevation ?? 0.3);
     }
 
-    // Render country borders
+    // Render country borders and names
     this.renderCountryBorders(ctx, world, range);
+    this.renderCountryNames(ctx, state);
+
+    // Render smooth fog of war (in world space, on top of everything)
+    this.renderFogOfWar(ctx, state, range);
 
     ctx.restore();
 
     // Render minimap
     this.renderMinimap(ctx, state);
-
-    // Render fog of war overlay info
-    this.renderFogOfWar(ctx, state, range);
   }
 
   /** Render a single terrain tile */
@@ -125,6 +126,9 @@ export class Renderer {
     season: Season,
     state: GameState,
   ): void {
+    // Don't render terrain for unexplored tiles — fog covers them completely
+    if (!tile.explored) return;
+
     const { x, y } = tile;
     const sx = (x - y) * (TILE_WIDTH / 2);
     const sy = (x + y) * (TILE_HEIGHT / 2);
@@ -132,14 +136,13 @@ export class Renderer {
     const sprite = getTerrainSprite(
       tile.biome as BiomeType,
       tile.elevation,
-      (x * 7 + y * 13) % 8,  // 8 variants per biome for memory efficiency
+      (x * 7 + y * 13) % 8,
       season,
       tile.vegetation,
     );
 
     const elevOffset = Math.floor(tile.elevation * 5) * ELEVATION_HEIGHT;
     const drawX = sx - TILE_WIDTH / 2;
-    // Sprite already includes elevation walls; we just raise the whole thing
     const drawY = sy - sprite.height + TILE_HEIGHT / 2;
 
     ctx.drawImage(sprite, drawX, drawY);
@@ -147,15 +150,6 @@ export class Renderer {
     // Road overlay (at the elevated diamond position)
     if (tile.roadLevel > 0) {
       this.renderRoad(ctx, tile, sx, sy - elevOffset, state.world);
-    }
-
-    // Fog of war
-    if (!tile.explored) {
-      ctx.fillStyle = 'rgba(10,10,15,0.85)';
-      this.fillIsoDiamond(ctx, sx, sy - elevOffset, TILE_WIDTH, TILE_HEIGHT);
-    } else if (!tile.visible) {
-      ctx.fillStyle = 'rgba(10,10,15,0.45)';
-      this.fillIsoDiamond(ctx, sx, sy - elevOffset, TILE_WIDTH, TILE_HEIGHT);
     }
   }
 
@@ -324,6 +318,37 @@ export class Renderer {
     }
   }
 
+  /** Render country names at their capital locations */
+  private renderCountryNames(ctx: CanvasRenderingContext2D, state: GameState): void {
+    const { world } = state;
+
+    for (const country of world.countries.values()) {
+      const capital = world.locations.get(country.capitalLocationId);
+      if (!capital) continue;
+
+      // Only show name if the capital tile is explored
+      const tile = world.tiles[capital.position.y]?.[capital.position.x];
+      if (!tile || !tile.explored) continue;
+
+      const { x, y } = capital.position;
+      const sx = (x - y) * (TILE_WIDTH / 2);
+      const sy = (x + y) * (TILE_HEIGHT / 2);
+      const elevOffset = Math.floor(tile.elevation * 5) * ELEVATION_HEIGHT;
+
+      // Draw country name with a subtle shadow
+      ctx.font = 'bold 10px monospace';
+      ctx.textAlign = 'center';
+
+      // Shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillText(country.name, sx + 1, sy - elevOffset - 55 + 1);
+
+      // Text in country color
+      ctx.fillStyle = country.color;
+      ctx.fillText(country.name, sx, sy - elevOffset - 55);
+    }
+  }
+
   /** Render minimap */
   private renderMinimap(ctx: CanvasRenderingContext2D, state: GameState): void {
     const mmSize = 160;
@@ -395,13 +420,90 @@ export class Renderer {
     this.minimapDirty = true;
   }
 
-  /** Render fog of war as overlay (handled per-tile now) */
+  /**
+   * Smooth fog of war — per-tile isometric diamonds with alpha values
+   * that are averaged with neighbours so edges blend continuously.
+   * Slightly oversized diamonds overlap to eliminate seams.
+   */
   private renderFogOfWar(
     ctx: CanvasRenderingContext2D,
     state: GameState,
     range: { minX: number; maxX: number; minY: number; maxY: number },
   ): void {
-    // Fog is drawn per-tile in renderTile
+    const { world, party } = state;
+    const px = party.position.x;
+    const py = party.position.y;
+    const visionR = 6;
+
+    // Pre-compute raw alpha for each tile in range
+    const rw = range.maxX - range.minX + 1;
+    const rh = range.maxY - range.minY + 1;
+    const rawAlpha = new Float32Array(rw * rh);
+
+    for (let ty = range.minY; ty <= range.maxY; ty++) {
+      for (let tx = range.minX; tx <= range.maxX; tx++) {
+        const tile = world.tiles[ty][tx];
+        const dx = tx - px;
+        const dy = ty - py;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        let a: number;
+        if (!tile.explored) {
+          a = 0.86;
+        } else if (tile.visible) {
+          // Soft fade at vision edge
+          a = Math.max(0, Math.min(1, (dist - visionR + 2) / 2.5)) * 0.4;
+        } else {
+          a = 0.48;
+        }
+        rawAlpha[(ty - range.minY) * rw + (tx - range.minX)] = a;
+      }
+    }
+
+    // Smoothed alpha: average each tile with its 8 neighbours
+    const smooth = new Float32Array(rw * rh);
+    for (let ly = 0; ly < rh; ly++) {
+      for (let lx = 0; lx < rw; lx++) {
+        let sum = 0;
+        let count = 0;
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const nx = lx + dx;
+            const ny = ly + dy;
+            if (nx >= 0 && nx < rw && ny >= 0 && ny < rh) {
+              sum += rawAlpha[ny * rw + nx];
+              count++;
+            }
+          }
+        }
+        smooth[ly * rw + lx] = sum / count;
+      }
+    }
+
+    // Draw slightly oversized diamonds so they overlap and hide seams
+    const ow = TILE_WIDTH + 4;
+    const oh = TILE_HEIGHT + 4;
+
+    for (let ty = range.minY; ty <= range.maxY; ty++) {
+      for (let tx = range.minX; tx <= range.maxX; tx++) {
+        const alpha = smooth[(ty - range.minY) * rw + (tx - range.minX)];
+        if (alpha < 0.01) continue; // fully clear — skip
+
+        const sx = (tx - ty) * (TILE_WIDTH / 2);
+        const sy = (tx + ty) * (TILE_HEIGHT / 2);
+        const elevOffset = Math.floor(world.tiles[ty][tx].elevation * 5) * ELEVATION_HEIGHT;
+        const cy = sy - elevOffset;
+
+        ctx.fillStyle = `rgba(10,10,18,${alpha.toFixed(3)})`;
+        ctx.beginPath();
+        ctx.moveTo(sx,        cy - oh / 2);
+        ctx.lineTo(sx + ow / 2, cy);
+        ctx.lineTo(sx,        cy + oh / 2);
+        ctx.lineTo(sx - ow / 2, cy);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
   }
 
   /** Fill an isometric diamond shape */

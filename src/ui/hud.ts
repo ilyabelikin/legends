@@ -105,10 +105,13 @@ export class HUD {
 
   private renderEventLog(state: GameState): void {
     const ctx = this.ctx;
-    const logWidth = 400;
-    const logHeight = 180;
+    const logWidth = 480;
+    const logHeight = 140;
     const logX = 8;
     const logY = this.height - logHeight - 50;
+    const textX = logX + 8;
+    const maxTextW = logWidth - 16;
+    const lineHeight = 13;
 
     // Background
     ctx.fillStyle = 'rgba(10,10,20,0.8)';
@@ -117,72 +120,84 @@ export class HUD {
     ctx.lineWidth = 1;
     ctx.strokeRect(logX, logY, logWidth, logHeight);
 
-    // Title
-    ctx.fillStyle = PALETTE.uiHighlight;
-    ctx.font = '10px monospace';
-    ctx.textAlign = 'left';
-    ctx.fillText('EVENT LOG', logX + 8, logY + 14);
-
-    // Rebuild hit areas
     this.logHitAreas = [];
+    ctx.font = '9px monospace';
+    ctx.textAlign = 'left';
 
-    const entries = state.eventLog.slice(-12);
-    const lineHeight = 13;
-    let y = logY + 28;
+    // Pre-render entries into wrapped lines, then take only what fits
+    const allLines: {
+      text: string;
+      color: string;
+      locName?: string;
+      locNameX?: number;
+      locNameW?: number;
+      locationId?: string;
+    }[] = [];
+
+    const entries = state.eventLog.slice(-20); // take more, we'll trim by height
 
     for (const entry of entries) {
-      ctx.font = '9px monospace';
       const prefix = `[${entry.turn}] `;
-      const msg = entry.message;
-      const maxChars = 54;
-      const fullText = prefix + msg;
-      const displayText = fullText.length > maxChars ? fullText.slice(0, maxChars) + '...' : fullText;
+      const fullText = prefix + entry.message;
+      const color = getLogColor(entry.type);
 
-      // Find the location name inside the message so we can highlight just that part
+      // Location info for this entry
       const loc = entry.locationId ? state.world.locations.get(entry.locationId) : null;
       const locName = loc?.name;
-      const nameIdx = locName ? msg.indexOf(locName) : -1;
 
-      if (locName && nameIdx >= 0) {
-        // Split into: prefix + before-name + NAME + after-name
-        const before = prefix + msg.slice(0, nameIdx);
-        const after = msg.slice(nameIdx + locName.length);
+      // Word-wrap the full text
+      const wrapped = wrapText(ctx, fullText, maxTextW);
 
-        // Truncate: we need to check total length
-        const totalLen = before.length + locName.length + after.length;
-        const trimAfter = totalLen > maxChars
-          ? after.slice(0, Math.max(0, maxChars - before.length - locName.length)) + '...'
-          : after;
+      for (let li = 0; li < wrapped.length; li++) {
+        const line = wrapped[li];
+        // Check if the location name falls on this line
+        let nameOnLine: string | undefined;
+        let locationId: string | undefined;
+        if (locName && line.includes(locName)) {
+          nameOnLine = locName;
+          locationId = entry.locationId!;
+        }
+        allLines.push({ text: line, color, locName: nameOnLine, locationId });
+      }
+    }
 
-        const textX = logX + 8;
+    // Only show lines that fit in the panel
+    const maxLines = Math.floor((logHeight - 12) / lineHeight);
+    const visibleLines = allLines.slice(-maxLines);
 
-        // Draw "before" in normal color
-        ctx.fillStyle = getLogColor(entry.type);
+    let y = logY + 12;
+    for (const line of visibleLines) {
+      if (line.locName && line.locationId) {
+        // Render with highlighted location name
+        const nameIdx = line.text.indexOf(line.locName);
+        const before = line.text.slice(0, nameIdx);
+        const after = line.text.slice(nameIdx + line.locName.length);
+
+        // Before
+        ctx.fillStyle = line.color;
         ctx.fillText(before, textX, y);
         const beforeW = ctx.measureText(before).width;
 
-        // Draw location name in bright color + underline
+        // Location name — highlighted + underlined
         ctx.fillStyle = PALETTE.uiHighlight;
-        ctx.fillText(locName, textX + beforeW, y);
-        const nameW = ctx.measureText(locName).width;
+        ctx.fillText(line.locName, textX + beforeW, y);
+        const nameW = ctx.measureText(line.locName).width;
         ctx.fillRect(textX + beforeW, y + 2, nameW, 1);
 
-        // Register hit area just for the name
         this.logHitAreas.push({
           x: textX + beforeW,
           y: y - lineHeight + 2,
           w: nameW,
           h: lineHeight,
-          locationId: entry.locationId!,
+          locationId: line.locationId,
         });
 
-        // Draw "after" in normal color
-        ctx.fillStyle = getLogColor(entry.type);
-        ctx.fillText(trimAfter, textX + beforeW + nameW, y);
+        // After
+        ctx.fillStyle = line.color;
+        ctx.fillText(after, textX + beforeW + nameW, y);
       } else {
-        // No location — render as plain text
-        ctx.fillStyle = getLogColor(entry.type);
-        ctx.fillText(displayText, logX + 8, y);
+        ctx.fillStyle = line.color;
+        ctx.fillText(line.text, textX, y);
       }
 
       y += lineHeight;
@@ -334,16 +349,25 @@ function getLogColor(type: EventLogEntry['type']): string {
   }
 }
 
-/** Brighter version for clickable entries */
-function getLogColorBright(type: EventLogEntry['type']): string {
-  switch (type) {
-    case 'combat': return '#f06060';
-    case 'trade': return '#50c0f0';
-    case 'political': return '#c050e0';
-    case 'discovery': return '#50e050';
-    case 'danger': return '#f0a050';
-    case 'social': return '#f0b0f0';
-    case 'system': return '#c0b8a8';
-    default: return PALETTE.uiText;
+/** Word-wrap a string to fit within maxWidth pixels */
+function wrapText(
+  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+): string[] {
+  const words = text.split(' ');
+  const lines: string[] = [];
+  let currentLine = '';
+
+  for (const word of words) {
+    const testLine = currentLine ? currentLine + ' ' + word : word;
+    if (ctx.measureText(testLine).width > maxWidth && currentLine) {
+      lines.push(currentLine);
+      currentLine = '  ' + word; // indent continuation lines
+    } else {
+      currentLine = testLine;
+    }
   }
+  if (currentLine) lines.push(currentLine);
+  return lines;
 }
