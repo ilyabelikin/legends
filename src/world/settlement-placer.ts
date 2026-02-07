@@ -1,0 +1,328 @@
+import type { Tile, Position } from '../types/terrain';
+import type { Location, LocationType, Building } from '../types/location';
+import type { ResourceStack, StorageType } from '../types/resource';
+import type { BiomeType } from '../types/biome';
+import { BIOME_DEFINITIONS } from '../data/biome-data';
+import { SeededRandom, generateId } from '../utils/random';
+import { euclideanDist } from '../utils/math';
+import { generateSettlementName } from '../data/name-data';
+
+/** Minimum distance between settlements */
+const MIN_SETTLEMENT_DISTANCE = 6;
+
+/** Maximum settlements to generate */
+const MAX_SETTLEMENTS = 40;
+
+/** Score a tile for settlement desirability */
+function scoreTileForSettlement(tile: Tile, tiles: Tile[][], width: number, height: number): number {
+  const biomeDef = BIOME_DEFINITIONS[tile.biome as BiomeType];
+  if (!biomeDef || !biomeDef.canBuildSettlement) return 0;
+
+  let score = 0;
+
+  // Flat land is preferred
+  if (tile.elevation >= 0.33 && tile.elevation <= 0.55) score += 3;
+  else if (tile.elevation >= 0.55 && tile.elevation <= 0.65) score += 1;
+
+  // Near water is good
+  let nearWater = false;
+  for (let dy = -3; dy <= 3; dy++) {
+    for (let dx = -3; dx <= 3; dx++) {
+      const nx = tile.x + dx;
+      const ny = tile.y + dy;
+      if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+        const neighborTerrain = tiles[ny][nx].terrainType;
+        if (neighborTerrain === 'shallow_ocean' || neighborTerrain === 'coast') {
+          nearWater = true;
+        }
+      }
+    }
+  }
+  if (nearWater) score += 3;
+
+  // Resources nearby are valuable
+  let resourceScore = 0;
+  for (let dy = -4; dy <= 4; dy++) {
+    for (let dx = -4; dx <= 4; dx++) {
+      const nx = tile.x + dx;
+      const ny = tile.y + dy;
+      if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+        const dep = tiles[ny][nx].resourceDeposit;
+        if (dep) resourceScore += dep.amount * 0.01;
+      }
+    }
+  }
+  score += Math.min(resourceScore, 5);
+
+  // Good biomes score higher
+  if (tile.biome === 'grassland') score += 2;
+  if (tile.biome === 'forest') score += 1;
+  if (tile.biome === 'hills') score += 1;
+  if (tile.biome === 'beach') score += 1;
+
+  // Moderate climate preferred
+  if (tile.temperature > 0.3 && tile.temperature < 0.7) score += 1;
+
+  return score;
+}
+
+/** Determine location type based on surroundings */
+function determineLocationType(
+  tile: Tile,
+  tiles: Tile[][],
+  width: number,
+  height: number,
+  rng: SeededRandom,
+): LocationType {
+  // Coastal → fishing village or port
+  let isCoastal = false;
+  for (let dy = -2; dy <= 2; dy++) {
+    for (let dx = -2; dx <= 2; dx++) {
+      const nx = tile.x + dx;
+      const ny = tile.y + dy;
+      if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+        if (tiles[ny][nx].terrainType === 'shallow_ocean') isCoastal = true;
+      }
+    }
+  }
+
+  if (isCoastal && rng.chance(0.5)) return 'fishing_village';
+
+  // Near mountains with ore → mine
+  if (tile.resourceDeposit?.resourceId === 'iron_ore' ||
+      tile.resourceDeposit?.resourceId === 'gold_ore' ||
+      tile.resourceDeposit?.resourceId === 'coal') {
+    if (rng.chance(0.3)) return 'mine';
+  }
+
+  // Grassland → farm or hamlet
+  if (tile.biome === 'grassland' && rng.chance(0.3)) return 'farm';
+
+  // Forest → lumber camp
+  if ((tile.biome === 'forest' || tile.biome === 'dense_forest') && rng.chance(0.2)) {
+    return 'lumber_camp';
+  }
+
+  // Default to hamlet/homestead
+  return rng.chance(0.5) ? 'hamlet' : 'homestead';
+}
+
+/** Create initial buildings for a location */
+function createInitialBuildings(type: LocationType, rng: SeededRandom): Building[] {
+  const buildings: Building[] = [];
+
+  const addBuilding = (bType: Building['type'], level = 1) => {
+    buildings.push({
+      type: bType,
+      level,
+      condition: 80 + rng.nextInt(0, 20),
+      workerId: null,
+      isOperational: true,
+    });
+  };
+
+  switch (type) {
+    case 'homestead':
+      addBuilding('house');
+      addBuilding('farm_field');
+      break;
+    case 'hamlet':
+      for (let i = 0; i < rng.nextInt(3, 5); i++) addBuilding('house');
+      addBuilding('farm_field');
+      if (rng.chance(0.5)) addBuilding('hunter_lodge');
+      break;
+    case 'village':
+      for (let i = 0; i < rng.nextInt(6, 10); i++) addBuilding('house');
+      for (let i = 0; i < 2; i++) addBuilding('farm_field');
+      addBuilding('market');
+      addBuilding('tavern');
+      if (rng.chance(0.5)) addBuilding('blacksmith');
+      if (rng.chance(0.4)) addBuilding('church');
+      break;
+    case 'town':
+      for (let i = 0; i < rng.nextInt(12, 20); i++) addBuilding('house');
+      for (let i = 0; i < 3; i++) addBuilding('farm_field');
+      addBuilding('market');
+      addBuilding('tavern');
+      addBuilding('blacksmith');
+      addBuilding('church');
+      addBuilding('barracks');
+      addBuilding('warehouse');
+      addBuilding('wall');
+      if (rng.chance(0.5)) addBuilding('guild_hall');
+      if (rng.chance(0.5)) addBuilding('bakery');
+      break;
+    case 'farm':
+      addBuilding('house');
+      for (let i = 0; i < rng.nextInt(2, 4); i++) addBuilding('farm_field');
+      break;
+    case 'mine':
+      addBuilding('house');
+      addBuilding('mine_shaft');
+      if (rng.chance(0.4)) addBuilding('smelter');
+      break;
+    case 'lumber_camp':
+      addBuilding('house');
+      addBuilding('sawmill');
+      break;
+    case 'fishing_village':
+      for (let i = 0; i < rng.nextInt(3, 6); i++) addBuilding('house');
+      addBuilding('dock');
+      if (rng.chance(0.4)) addBuilding('tavern');
+      break;
+    default:
+      addBuilding('house');
+      break;
+  }
+
+  return buildings;
+}
+
+/**
+ * Place settlements throughout the world.
+ * Returns a map of location ID → Location.
+ */
+export function placeSettlements(
+  tiles: Tile[][],
+  width: number,
+  height: number,
+  rng: SeededRandom,
+): Map<string, Location> {
+  const locations = new Map<string, Location>();
+  const placed: Position[] = [];
+
+  // Score all tiles
+  const scores: { x: number; y: number; score: number }[] = [];
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const score = scoreTileForSettlement(tiles[y][x], tiles, width, height);
+      if (score > 0) scores.push({ x, y, score });
+    }
+  }
+
+  // Sort by score (best first) with some randomization
+  scores.sort((a, b) => (b.score + rng.next() * 2) - (a.score + rng.next() * 2));
+
+  for (const candidate of scores) {
+    if (locations.size >= MAX_SETTLEMENTS) break;
+
+    // Check minimum distance from existing settlements
+    const tooClose = placed.some(p =>
+      euclideanDist(p, candidate) < MIN_SETTLEMENT_DISTANCE
+    );
+    if (tooClose) continue;
+
+    const tile = tiles[candidate.y][candidate.x];
+    const locType = determineLocationType(tile, tiles, width, height, rng);
+
+    // Upgrade some to larger settlements
+    let finalType = locType;
+    if (locations.size < 3 && (locType === 'hamlet' || locType === 'homestead')) {
+      finalType = 'town'; // first few settlements are larger
+    } else if (locations.size < 8 && locType === 'homestead' && rng.chance(0.3)) {
+      finalType = 'village';
+    }
+
+    const id = generateId('loc');
+    const name = generateSettlementName(rng);
+    const buildings = createInitialBuildings(finalType, rng);
+    const houseCount = buildings.filter(b => b.type === 'house').length;
+
+    const location: Location = {
+      id,
+      name,
+      type: finalType,
+      position: { x: candidate.x, y: candidate.y },
+      size: houseCount,
+      populationCapacity: houseCount * 4,
+      residentIds: [],
+      buildings,
+      productionSites: [],
+      storage: getInitialStorage(finalType, rng),
+      storageCapacity: {
+        none: 200,
+        dry: 100,
+        cold: 30,
+        secure: 20,
+      },
+      tradeRouteIds: [],
+      marketPrices: {},
+      defenseLevel: finalType === 'town' ? 3 : finalType === 'village' ? 1 : 0,
+      wallLevel: finalType === 'town' ? 1 : 0,
+      garrisonIds: [],
+      ownerId: null,
+      countryId: null,
+      prosperity: 50 + rng.nextInt(-10, 10),
+      safety: 60 + rng.nextInt(-10, 10),
+      happiness: 50 + rng.nextInt(-5, 5),
+      foundedTurn: 0,
+      isDestroyed: false,
+      growthPoints: 0,
+    };
+
+    locations.set(id, location);
+    tile.locationId = id;
+    placed.push({ x: candidate.x, y: candidate.y });
+  }
+
+  return locations;
+}
+
+/** Generate initial resource stocks for a location */
+function getInitialStorage(type: LocationType, rng: SeededRandom): ResourceStack[] {
+  const storage: ResourceStack[] = [];
+  const add = (id: string, qty: number) => {
+    storage.push({ resourceId: id, quantity: qty, quality: 0.7, age: 0 });
+  };
+
+  // All settlements start with some food
+  add('wheat', rng.nextInt(5, 15));
+
+  switch (type) {
+    case 'town':
+    case 'city':
+      add('bread', rng.nextInt(10, 30));
+      add('wheat', rng.nextInt(10, 20));
+      add('wood', rng.nextInt(10, 25));
+      add('stone', rng.nextInt(5, 15));
+      add('iron_ore', rng.nextInt(3, 10));
+      add('tools', rng.nextInt(3, 8));
+      add('fabric', rng.nextInt(2, 6));
+      add('ale', rng.nextInt(5, 15));
+      if (rng.chance(0.3)) add('weapons', rng.nextInt(1, 4));
+      break;
+    case 'village':
+      add('bread', rng.nextInt(5, 15));
+      add('wood', rng.nextInt(5, 15));
+      add('tools', rng.nextInt(1, 4));
+      break;
+    case 'hamlet':
+    case 'homestead':
+      add('wood', rng.nextInt(3, 10));
+      break;
+    case 'farm':
+      add('wheat', rng.nextInt(10, 25));
+      add('sheep', rng.nextInt(2, 6));
+      break;
+    case 'mine':
+      add('iron_ore', rng.nextInt(5, 15));
+      add('coal', rng.nextInt(5, 10));
+      add('stone', rng.nextInt(5, 10));
+      break;
+    case 'lumber_camp':
+      add('wood', rng.nextInt(15, 30));
+      break;
+    case 'fishing_village':
+      add('fish', rng.nextInt(5, 15));
+      break;
+    case 'port':
+      add('fish', rng.nextInt(10, 20));
+      add('bread', rng.nextInt(5, 10));
+      add('ale', rng.nextInt(3, 8));
+      break;
+    default:
+      break;
+  }
+
+  return storage;
+}

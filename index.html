@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Legends — A Living World Adventure</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #0a0a0f;
+      font-family: 'Courier New', monospace;
+      color: #e0d8c8;
+    }
+    #game-container {
+      position: relative;
+      width: 100%;
+      height: 100%;
+    }
+    #game-canvas {
+      display: block;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      cursor: crosshair;
+    }
+    #ui-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+    #ui-overlay > * {
+      pointer-events: auto;
+    }
+    #loading-screen {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: #0a0a0f;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      transition: opacity 0.5s;
+    }
+    #loading-screen h1 {
+      font-size: 48px;
+      color: #c8a84e;
+      text-shadow: 0 0 20px rgba(200, 168, 78, 0.5);
+      margin-bottom: 20px;
+      letter-spacing: 8px;
+    }
+    #loading-screen p {
+      font-size: 14px;
+      color: #8a8070;
+      margin-bottom: 30px;
+    }
+    #loading-bar-container {
+      width: 300px;
+      height: 4px;
+      background: #1a1a2e;
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    #loading-bar {
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(90deg, #c8a84e, #e8c86e);
+      transition: width 0.3s;
+    }
+  </style>
+</head>
+<body>
+  <div id="game-container">
+    <canvas id="game-canvas"></canvas>
+    <div id="ui-overlay"></div>
+  </div>
+  <div id="loading-screen">
+    <h1>LEGENDS</h1>
+    <p>Generating a living world...</p>
+    <div id="loading-bar-container">
+      <div id="loading-bar"></div>
+    </div>
+  </div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
