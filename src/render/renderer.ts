@@ -3,7 +3,7 @@ import type { Tile } from '../types/terrain';
 import type { Location } from '../types/location';
 import type { Creature } from '../types/creature';
 import { Camera, TILE_WIDTH, TILE_HEIGHT, ELEVATION_HEIGHT } from './camera';
-import { getTerrainSprite } from './sprites/terrain-sprites';
+import { getTerrainSprite, type TerrainLayer } from './sprites/terrain-sprites';
 import { getBuildingSprite } from './sprites/building-sprites';
 import { getPartySprite, getCreatureSprite } from './sprites/entity-sprites';
 import { PALETTE, hexToRgba } from './palette';
@@ -64,11 +64,31 @@ export class Renderer {
     // Get visible tile range
     const range = this.camera.getVisibleRange(world.width, world.height);
 
-    // Render tiles back-to-front (painter's algorithm)
+    // Pass 1: Ground (elevation walls + diamond + texture) — back-to-front
+    for (let y = range.minY; y <= range.maxY; y++) {
+      for (let x = range.minX; x <= range.maxX; x++) {
+        this.renderTileLayer(ctx, world.tiles[y][x], season, 'ground');
+      }
+    }
+
+    // Pass 2: Roads + working sites (on top of ground, below trees)
     for (let y = range.minY; y <= range.maxY; y++) {
       for (let x = range.minX; x <= range.maxX; x++) {
         const tile = world.tiles[y][x];
-        this.renderTile(ctx, tile, season, state);
+        if (tile.explored && tile.roadLevel > 0) {
+          const sx = (x - y) * (TILE_WIDTH / 2);
+          const sy = (x + y) * (TILE_HEIGHT / 2);
+          const elevOffset = Math.floor(tile.elevation * 5) * ELEVATION_HEIGHT;
+          this.renderRoad(ctx, tile, sx, sy - elevOffset, world);
+        }
+      }
+    }
+    this.renderWorkingSites(ctx, world, range);
+
+    // Pass 3: Vegetation (trees, bushes) — on top of roads
+    for (let y = range.minY; y <= range.maxY; y++) {
+      for (let x = range.minX; x <= range.maxX; x++) {
+        this.renderTileLayer(ctx, world.tiles[y][x], season, 'vegetation');
       }
     }
 
@@ -119,14 +139,13 @@ export class Renderer {
     this.renderMinimap(ctx, state);
   }
 
-  /** Render a single terrain tile */
-  private renderTile(
+  /** Render one layer (ground or vegetation) of a terrain tile */
+  private renderTileLayer(
     ctx: CanvasRenderingContext2D,
     tile: Tile,
     season: Season,
-    state: GameState,
+    layer: TerrainLayer,
   ): void {
-    // Don't render terrain for unexplored tiles — fog covers them completely
     if (!tile.explored) return;
 
     const { x, y } = tile;
@@ -139,24 +158,23 @@ export class Renderer {
       (x * 7 + y * 13) % 8,
       season,
       tile.vegetation,
+      layer,
     );
 
-    const elevOffset = Math.floor(tile.elevation * 5) * ELEVATION_HEIGHT;
     const drawX = sx - TILE_WIDTH / 2;
     const drawY = sy - sprite.height + TILE_HEIGHT / 2;
 
     ctx.drawImage(sprite, drawX, drawY);
-
-    // Road overlay (at the elevated diamond position)
-    if (tile.roadLevel > 0) {
-      this.renderRoad(ctx, tile, sx, sy - elevOffset, state.world);
-    }
   }
 
   /**
    * Render road on tile — draws isometric line segments toward
    * each neighboring road tile, smoothly interpolating elevation
    * so roads follow the terrain instead of jumping between heights.
+   */
+  /**
+   * Render road on tile — soft curved segments with transparency
+   * so they look like natural dirt/stone tracks.
    */
   private renderRoad(
     ctx: CanvasRenderingContext2D,
@@ -166,18 +184,23 @@ export class Renderer {
     world: GameState['world'],
   ): void {
     const level = tile.roadLevel;
-    const color = level >= 3 ? PALETTE.roadHighway
-      : level >= 2 ? PALETTE.roadStone
-      : PALETTE.roadDirt;
-    const lineW = level >= 3 ? 4 : level >= 2 ? 3 : 2;
+
+    // Semi-transparent earthy colours
+    const color = level >= 3 ? 'rgba(180,170,155,0.6)'
+      : level >= 2 ? 'rgba(150,135,115,0.55)'
+      : 'rgba(130,110,80,0.45)';
+    const lineW = level >= 3 ? 5 : level >= 2 ? 4 : 3;
 
     ctx.strokeStyle = color;
     ctx.lineWidth = lineW;
     ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
 
     const thisElev = Math.floor(tile.elevation * 5) * ELEVATION_HEIGHT;
 
-    // 4-directional neighbor offsets and their flat isometric deltas
+    // Deterministic wobble per tile so curves are consistent across frames
+    const wobble = ((tile.x * 7 + tile.y * 13) % 5) - 2; // -2 to +2
+
     const dirs: { dx: number; dy: number; isoX: number; isoY: number }[] = [
       { dx:  1, dy:  0, isoX:  TILE_WIDTH / 2, isoY:  TILE_HEIGHT / 2 },
       { dx: -1, dy:  0, isoX: -TILE_WIDTH / 2, isoY: -TILE_HEIGHT / 2 },
@@ -194,21 +217,25 @@ export class Renderer {
 
       const neighbor = world.tiles[ny][nx];
       if (neighbor.roadLevel > 0 || neighbor.locationId) {
-        // The midpoint's elevation is the average of both tiles
         const neighborElev = Math.floor(neighbor.elevation * 5) * ELEVATION_HEIGHT;
         const midElev = (thisElev + neighborElev) / 2;
+        const elevDelta = midElev - thisElev;
 
-        // Flat isometric half-step
         const halfX = dir.isoX / 2;
         const halfY = dir.isoY / 2;
 
-        // Adjust the endpoint Y by the elevation difference at the midpoint
-        // sy already has thisElev baked in, so offset by (midElev - thisElev)
-        const elevDelta = midElev - thisElev;
+        // Control point offset perpendicular to the direction for a gentle curve
+        const perpX = -dir.isoY * 0.08 + wobble * 0.4;
+        const perpY =  dir.isoX * 0.08 + wobble * 0.3;
+
+        const endX = sx + halfX;
+        const endY = sy + halfY - elevDelta;
+        const cpX = sx + halfX * 0.5 + perpX;
+        const cpY = sy + halfY * 0.5 - elevDelta * 0.5 + perpY;
 
         ctx.beginPath();
         ctx.moveTo(sx, sy);
-        ctx.lineTo(sx + halfX, sy + halfY - elevDelta);
+        ctx.quadraticCurveTo(cpX, cpY, endX, endY);
         ctx.stroke();
         hasConnection = true;
       }
@@ -216,8 +243,141 @@ export class Renderer {
 
     if (!hasConnection) {
       ctx.fillStyle = color;
-      ctx.fillRect(sx - lineW / 2, sy - lineW / 2, lineW, lineW);
+      const r = lineW / 2;
+      ctx.beginPath();
+      ctx.arc(sx, sy, r, 0, Math.PI * 2);
+      ctx.fill();
     }
+  }
+
+  /**
+   * Render farm fields, mine entrances, and lumber stumps on tiles
+   * adjacent to settlements that have those buildings.
+   */
+  private renderWorkingSites(
+    ctx: CanvasRenderingContext2D,
+    world: GameState['world'],
+    range: { minX: number; maxX: number; minY: number; maxY: number },
+  ): void {
+    for (const loc of world.locations.values()) {
+      if (loc.isDestroyed) continue;
+      const { x: lx, y: ly } = loc.position;
+
+      // Check what buildings this settlement has
+      const hasFarms = loc.buildings.some(b => b.type === 'farm_field' && b.isOperational);
+      const hasMines = loc.buildings.some(b => b.type === 'mine_shaft' && b.isOperational);
+      const hasSawmill = loc.buildings.some(b => (b.type === 'sawmill' || b.type === 'hunter_lodge') && b.isOperational);
+
+      if (!hasFarms && !hasMines && !hasSawmill) continue;
+
+      // Farm field count determines how many adjacent tiles get fields
+      const farmCount = loc.buildings.filter(b => b.type === 'farm_field').length;
+      const mineCount = loc.buildings.filter(b => b.type === 'mine_shaft').length;
+
+      // Deterministic pattern of adjacent tiles for this location
+      const adjacents = [
+        { dx: 1, dy: 0 }, { dx: -1, dy: 0 }, { dx: 0, dy: 1 }, { dx: 0, dy: -1 },
+        { dx: 1, dy: 1 }, { dx: -1, dy: -1 }, { dx: 1, dy: -1 }, { dx: -1, dy: 1 },
+      ];
+
+      let farmsPlaced = 0;
+      let minesPlaced = 0;
+
+      for (const adj of adjacents) {
+        const nx = lx + adj.dx;
+        const ny = ly + adj.dy;
+        if (nx < range.minX || nx > range.maxX || ny < range.minY || ny > range.maxY) continue;
+        if (nx < 0 || nx >= world.width || ny < 0 || ny >= world.height) continue;
+
+        const tile = world.tiles[ny][nx];
+        if (!tile.explored) continue;
+        if (tile.locationId) continue; // don't draw on other settlements
+        if (tile.terrainType === 'deep_ocean' || tile.terrainType === 'shallow_ocean') continue;
+
+        const sx = (nx - ny) * (TILE_WIDTH / 2);
+        const sy = (nx + ny) * (TILE_HEIGHT / 2);
+        const elevOffset = Math.floor(tile.elevation * 5) * ELEVATION_HEIGHT;
+        const cy = sy - elevOffset;
+
+        // Draw farm fields on grassland/savanna adjacent tiles
+        if (hasFarms && farmsPlaced < farmCount &&
+            (tile.biome === 'grassland' || tile.biome === 'savanna' || tile.biome === 'forest')) {
+          this.drawFieldOverlay(ctx, sx, cy);
+          farmsPlaced++;
+          continue;
+        }
+
+        // Draw mine entrance on hills/mountain adjacent tiles
+        if (hasMines && minesPlaced < mineCount &&
+            (tile.biome === 'hills' || tile.biome === 'mountain')) {
+          this.drawMineOverlay(ctx, sx, cy);
+          minesPlaced++;
+          continue;
+        }
+
+        // Draw lumber stumps on forest adjacent tiles
+        if (hasSawmill &&
+            (tile.biome === 'forest' || tile.biome === 'dense_forest')) {
+          this.drawStumpOverlay(ctx, sx, cy);
+        }
+      }
+    }
+  }
+
+  /** Draw crop field rows on a tile — isometric diagonal rows */
+  private drawFieldOverlay(ctx: CanvasRenderingContext2D, sx: number, cy: number): void {
+    // Plowed earth — isometric rows running NE-SW across the diamond
+    const rows = 7;
+    const rowSpacing = TILE_HEIGHT / (rows + 1);
+
+    for (let i = 1; i <= rows; i++) {
+      const ry = cy - TILE_HEIGHT / 2 + i * rowSpacing;
+      // Width of diamond at this y-offset
+      const t = Math.abs(ry - cy) / (TILE_HEIGHT / 2);
+      const halfW = (TILE_WIDTH / 2) * (1 - t) * 0.75;
+      if (halfW < 2) continue;
+
+      // Soil row
+      ctx.fillStyle = i % 2 === 0 ? 'rgba(138,112,64,0.5)' : 'rgba(110,90,50,0.45)';
+      ctx.fillRect(sx - halfW, ry, halfW * 2, 1);
+
+      // Crop row (green/wheat alternating)
+      ctx.fillStyle = i % 2 === 0 ? 'rgba(104,160,48,0.6)' : 'rgba(200,176,64,0.55)';
+      ctx.fillRect(sx - halfW + 2, ry - 1, halfW * 2 - 4, 1);
+    }
+  }
+
+  /** Draw mine entrance on a tile */
+  private drawMineOverlay(ctx: CanvasRenderingContext2D, sx: number, cy: number): void {
+    // Dark entrance
+    ctx.fillStyle = '#2a2a2a';
+    ctx.fillRect(sx - 5, cy - 4, 10, 6);
+    // Wooden frame
+    ctx.fillStyle = '#6a4a20';
+    ctx.fillRect(sx - 6, cy - 5, 12, 2);
+    ctx.fillRect(sx - 6, cy - 5, 2, 8);
+    ctx.fillRect(sx + 4, cy - 5, 2, 8);
+    // Ore pile
+    ctx.fillStyle = '#7a6a5a';
+    ctx.fillRect(sx + 7, cy - 1, 4, 2);
+    ctx.fillStyle = '#5a4a3a';
+    ctx.fillRect(sx + 8, cy - 2, 2, 1);
+    // Cart track
+    ctx.fillStyle = '#5a4a30';
+    ctx.fillRect(sx - 2, cy + 2, 8, 1);
+  }
+
+  /** Draw lumber stumps on a tile */
+  private drawStumpOverlay(ctx: CanvasRenderingContext2D, sx: number, cy: number): void {
+    // Tree stumps
+    ctx.fillStyle = '#6a5028';
+    ctx.fillRect(sx - 6, cy, 4, 3);
+    ctx.fillRect(sx + 4, cy - 2, 3, 3);
+    // Log pile
+    ctx.fillStyle = '#7a5a30';
+    ctx.fillRect(sx - 2, cy + 1, 6, 2);
+    ctx.fillStyle = '#8a6a3a';
+    ctx.fillRect(sx - 1, cy, 4, 1);
   }
 
   /** Render a location (settlement) */

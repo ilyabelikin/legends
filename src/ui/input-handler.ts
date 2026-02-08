@@ -88,10 +88,10 @@ export class InputHandler {
         this.engine.rest();
         break;
 
-      // Buy food
+      // Buy food — preview first, confirm if expensive
       case 'f': case 'F':
         this.engine.cancelMovement();
-        this.engine.buyFood();
+        this.tryBuyFood();
         break;
 
       // Escape — cancel movement
@@ -172,6 +172,8 @@ export class InputHandler {
 
   private onWheel(e: WheelEvent): void {
     e.preventDefault();
+    // Let HUD handle scroll if cursor is over the event log
+    if (this.hud?.handleScroll(e.clientX, e.clientY, e.deltaY)) return;
     const factor = e.deltaY > 0 ? 0.9 : 1.1;
     this.renderer.camera.zoomAt(factor, e.clientX, e.clientY);
   }
@@ -234,6 +236,30 @@ export class InputHandler {
     const fx = Math.max(0, Math.min(state.world.width - 1, cx));
     const fy = Math.max(0, Math.min(state.world.height - 1, cy));
     return { x: fx, y: fy };
+  }
+
+  // ── Buy Food with Price Alert ──────────────────────────
+
+  private tryBuyFood(): void {
+    const preview = this.engine.previewBuyFood();
+    if (!preview) {
+      this.engine.buyFood(); // will log the appropriate error
+      return;
+    }
+
+    if (preview.isExpensive) {
+      const ok = confirm(
+        `⚠ Price is high!\n\n` +
+        `${preview.foodId} costs ${preview.price}g (only ${preview.stock} left in ${preview.locName}).\n\n` +
+        `Buy anyway?`
+      );
+      if (!ok) {
+        this.engine.addLog(`Decided not to buy ${preview.foodId} at ${preview.price}g.`, 'system');
+        return;
+      }
+    }
+
+    this.engine.buyFood();
   }
 
   // ── Continuous Camera Pan (called every frame) ────────

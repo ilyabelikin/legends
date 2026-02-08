@@ -113,5 +113,46 @@ export function spawnCreatures(
     spawnPoints.push({ x, y });
   }
 
+  // Guarantee at least 2 dragons exist — find mountain tiles and place them
+  const dragonCount = Array.from(creatures.values()).filter(c => c.type === 'dragon').length;
+  const dragonsNeeded = Math.max(0, 2 - dragonCount);
+  if (dragonsNeeded > 0) {
+    const dragonDef = CREATURE_DEFINITIONS['dragon'];
+    let placed = 0;
+    for (let attempt = 0; attempt < 500 && placed < dragonsNeeded; attempt++) {
+      const x = rng.nextInt(0, width - 1);
+      const y = rng.nextInt(0, height - 1);
+      const tile = tiles[y][x];
+      if (isWater(tile.terrainType)) continue;
+      if (tile.locationId) continue;
+      if (tile.biome !== 'mountain' && tile.biome !== 'snow_mountain' && tile.biome !== 'hills') continue;
+
+      const id = generateId('creature');
+      const dragon: Creature = {
+        id,
+        type: 'dragon',
+        name: generateDragonName(rng),
+        position: { x, y },
+        health: dragonDef.baseHealth * (0.9 + rng.next() * 0.3),
+        maxHealth: dragonDef.baseHealth,
+        attack: dragonDef.baseAttack,
+        defense: dragonDef.baseDefense,
+        speed: dragonDef.baseSpeed,
+        behavior: 'territorial',
+        homePosition: { x, y },
+        wanderRadius: 20,
+        isHostile: true,
+        loot: [
+          { resourceId: 'gold_ore', quantity: rng.nextInt(10, 30), quality: 0.8, age: 0 },
+        ],
+        age: 0,
+        lastActionTurn: 0,
+      };
+      creatures.set(id, dragon);
+      spawnPoints.push({ x, y });
+      placed++;
+    }
+  }
+
   return creatures;
 }

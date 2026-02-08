@@ -10,6 +10,7 @@ import { advanceTurn } from './turn-manager';
 import { SeededRandom, generateId } from '../utils/random';
 import { isWater } from '../world/terrain-generator';
 import { BIOME_DEFINITIONS } from '../data/biome-data';
+import { RESOURCE_DEFINITIONS } from '../data/resource-data';
 import type { BiomeType } from '../types/biome';
 import { manhattanDist, inBounds } from '../utils/math';
 import { findPath } from '../utils/pathfinding';
@@ -337,7 +338,38 @@ export class GameEngine {
     return true;
   }
 
-  /** Buy food — costs 1 AP. Requires market/tavern with stock. */
+  /** Preview what food is available and at what price. Returns null if nothing. */
+  previewBuyFood(): { foodId: string; price: number; stock: number; locName: string; isExpensive: boolean } | null {
+    const { party, world } = this.state;
+
+    if (party.actionPoints < 1) return null;
+
+    const tile = world.tiles[party.position.y]?.[party.position.x];
+    if (!tile?.locationId) return null;
+
+    const loc = world.locations.get(tile.locationId);
+    if (!loc || loc.isDestroyed) return null;
+
+    const canTrade = loc.buildings.some(
+      b => b.isOperational && (b.type === 'market' || b.type === 'tavern' || b.type === 'dock'),
+    );
+    if (!canTrade) return null;
+
+    const foodTypes = ['bread', 'meat', 'fish', 'berries', 'wheat', 'exotic_fruit'];
+    for (const foodId of foodTypes) {
+      const stackIdx = loc.storage.findIndex(s => s.resourceId === foodId && s.quantity > 0);
+      if (stackIdx >= 0) {
+        const stock = loc.storage[stackIdx].quantity;
+        const price = loc.marketPrices[foodId] ?? 3;
+        const def = RESOURCE_DEFINITIONS[foodId];
+        const isExpensive = def ? price >= def.baseValue * 2 : false;
+        return { foodId, price, stock, locName: loc.name, isExpensive };
+      }
+    }
+    return null;
+  }
+
+  /** Execute the food purchase (call after preview/confirmation). */
   buyFood(): boolean {
     const { party, world } = this.state;
 
@@ -355,7 +387,6 @@ export class GameEngine {
     const loc = world.locations.get(tile.locationId);
     if (!loc || loc.isDestroyed) return false;
 
-    // Must have a market, tavern, or dock to purchase food
     const canTrade = loc.buildings.some(
       b => b.isOperational && (b.type === 'market' || b.type === 'tavern' || b.type === 'dock'),
     );
@@ -364,14 +395,13 @@ export class GameEngine {
       return false;
     }
 
-    // Try to buy food from actual storage (most valuable first)
     const foodTypes = ['bread', 'meat', 'fish', 'berries', 'wheat', 'exotic_fruit'];
     for (const foodId of foodTypes) {
       const stackIdx = loc.storage.findIndex(s => s.resourceId === foodId && s.quantity > 0);
       if (stackIdx >= 0) {
         const price = loc.marketPrices[foodId] ?? 3;
         if (party.gold < price) {
-          this.addLog(`Not enough gold to buy ${foodId} (${price}g).`, 'system');
+          this.addLog(`Cannot afford ${foodId} — costs ${price}g.`, 'system');
           return false;
         }
 
@@ -384,7 +414,8 @@ export class GameEngine {
           member.needs.food = Math.min(100, member.needs.food + 25);
         }
 
-        this.addLog(`Bought ${foodId} for ${price} gold in ${loc.name}.`, 'trade', loc.id);
+        const remaining = loc.storage.find(s => s.resourceId === foodId)?.quantity ?? 0;
+        this.addLog(`Bought ${foodId} for ${price}g in ${loc.name} (${remaining} left).`, 'trade', loc.id);
         return true;
       }
     }
@@ -561,6 +592,53 @@ export class GameEngine {
         if (loc.countryId) {
           const country = world.countries.get(loc.countryId);
           if (country) info.push(`Country: ${country.name}`);
+        }
+        // Show key goods and prices
+        const goods = loc.storage
+          .filter(s => s.quantity > 0)
+          .sort((a, b) => b.quantity - a.quantity)
+          .slice(0, 4);
+        if (goods.length > 0) {
+          info.push(`Stock:`);
+          for (const g of goods) {
+            const price = loc.marketPrices[g.resourceId] ?? '?';
+            info.push(`  ${g.resourceId}: ${g.quantity} (${price}g)`);
+          }
+        }
+      }
+    }
+
+    // Check if this tile is a working site for a nearby settlement
+    if (!tile.locationId) {
+      for (const loc of world.locations.values()) {
+        if (loc.isDestroyed) continue;
+        const dx = Math.abs(loc.position.x - x);
+        const dy = Math.abs(loc.position.y - y);
+        if (dx > 1 || dy > 1) continue; // only immediate neighbors
+        if (dx === 0 && dy === 0) continue; // that's the settlement itself
+
+        const hasFarms = loc.buildings.some(b => b.type === 'farm_field' && b.isOperational);
+        const hasMines = loc.buildings.some(b => b.type === 'mine_shaft' && b.isOperational);
+        const hasSawmill = loc.buildings.some(b => (b.type === 'sawmill' || b.type === 'hunter_lodge') && b.isOperational);
+
+        if (hasFarms && (tile.biome === 'grassland' || tile.biome === 'savanna' || tile.biome === 'forest')) {
+          info.push(`Wheat fields (${loc.name})`);
+        } else if (hasMines && (tile.biome === 'hills' || tile.biome === 'mountain')) {
+          info.push(`Mine workings (${loc.name})`);
+        } else if (hasSawmill && (tile.biome === 'forest' || tile.biome === 'dense_forest')) {
+          info.push(`Lumber site (${loc.name})`);
+        }
+      }
+    }
+
+    // Creatures on this tile (only if visible)
+    if (tile.visible) {
+      for (const creature of world.creatures.values()) {
+        if (creature.position.x === x && creature.position.y === y && creature.health > 0) {
+          const label = creature.name ?? creature.type;
+          const hostile = creature.isHostile ? ' (hostile)' : '';
+          info.push(`Creature: ${label}${hostile}`);
+          info.push(`  HP: ${Math.round(creature.health)}/${creature.maxHealth}`);
         }
       }
     }

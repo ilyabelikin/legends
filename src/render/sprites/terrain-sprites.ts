@@ -6,6 +6,9 @@ import type { Season } from '../../types/season';
 /** Cache for terrain sprites */
 const spriteCache = new Map<string, OffscreenCanvas>();
 
+/** Layer type for split rendering: ground under roads, trees over roads */
+export type TerrainLayer = 'ground' | 'vegetation';
+
 /** Get or create a terrain sprite for a biome */
 export function getTerrainSprite(
   biome: BiomeType,
@@ -13,15 +16,15 @@ export function getTerrainSprite(
   variant: number,
   season: Season,
   vegetation: number,
+  layer: TerrainLayer = 'ground',
 ): OffscreenCanvas {
-  // Quantize values to reduce unique cache entries (max ~3000 sprites)
   const elevKey = Math.round(elevation * 5);
   const vegKey = Math.round(vegetation * 3);
-  const key = `${biome}_${elevKey}_${variant}_${season}_${vegKey}`;
+  const key = `${layer}_${biome}_${elevKey}_${variant}_${season}_${vegKey}`;
   const cached = spriteCache.get(key);
   if (cached) return cached;
 
-  const sprite = createTerrainSprite(biome, elevation, variant, season, vegetation);
+  const sprite = createTerrainSprite(biome, elevation, variant, season, vegetation, layer);
   spriteCache.set(key, sprite);
   return sprite;
 }
@@ -33,34 +36,34 @@ function createTerrainSprite(
   variant: number,
   season: Season,
   vegetation: number,
+  layer: TerrainLayer,
 ): OffscreenCanvas {
   const elevPx = Math.floor(elevation * 5) * ELEVATION_HEIGHT;
-  const totalHeight = TILE_HEIGHT + elevPx + 40; // extra for vegetation
+  const totalHeight = TILE_HEIGHT + elevPx + 40;
   const canvas = new OffscreenCanvas(TILE_WIDTH + 2, totalHeight);
   const ctx = canvas.getContext('2d')!;
 
   const colors = getBiomeColors(biome, season);
   const baseY = totalHeight - TILE_HEIGHT - elevPx;
 
-  // Draw elevation side (left face)
-  if (elevPx > 0) {
-    drawElevationSide(ctx, baseY + TILE_HEIGHT / 2, elevPx, colors.sideDark, colors.sideLight);
-  }
-
-  // Draw top diamond
-  drawIsoDiamond(ctx, TILE_WIDTH / 2 + 1, baseY + TILE_HEIGHT / 2, TILE_WIDTH, TILE_HEIGHT, colors.top);
-
-  // Add terrain texture
-  addTerrainTexture(ctx, TILE_WIDTH / 2 + 1, baseY + TILE_HEIGHT / 2, biome, variant, colors);
-
-  // Draw vegetation
-  if (vegetation > 0.1 && biome !== 'ocean' && biome !== 'beach' && biome !== 'desert') {
-    drawVegetation(ctx, TILE_WIDTH / 2 + 1, baseY, biome, vegetation, season, variant);
-  }
-
-  // Water animation hint (shimmering)
-  if (biome === 'ocean') {
-    addWaterEffect(ctx, TILE_WIDTH / 2 + 1, baseY + TILE_HEIGHT / 2, variant);
+  if (layer === 'ground') {
+    // Elevation side walls
+    if (elevPx > 0) {
+      drawElevationSide(ctx, baseY + TILE_HEIGHT / 2, elevPx, colors.sideDark, colors.sideLight);
+    }
+    // Top diamond
+    drawIsoDiamond(ctx, TILE_WIDTH / 2 + 1, baseY + TILE_HEIGHT / 2, TILE_WIDTH, TILE_HEIGHT, colors.top);
+    // Terrain texture
+    addTerrainTexture(ctx, TILE_WIDTH / 2 + 1, baseY + TILE_HEIGHT / 2, biome, variant, colors);
+    // Water shimmer
+    if (biome === 'ocean') {
+      addWaterEffect(ctx, TILE_WIDTH / 2 + 1, baseY + TILE_HEIGHT / 2, variant);
+    }
+  } else {
+    // Vegetation only (trees, bushes)
+    if (vegetation > 0.1 && biome !== 'ocean' && biome !== 'beach' && biome !== 'desert') {
+      drawVegetation(ctx, TILE_WIDTH / 2 + 1, baseY, biome, vegetation, season, variant);
+    }
   }
 
   return canvas;

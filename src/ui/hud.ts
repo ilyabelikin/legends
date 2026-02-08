@@ -26,6 +26,13 @@ export class HUD {
   /** Clickable log entry regions rebuilt every frame */
   private logHitAreas: LogHitArea[] = [];
 
+  /** Scroll offset for event log (0 = bottom / newest) */
+  private logScrollOffset = 0;
+  /** Total wrapped lines last frame (for clamping scroll) */
+  private logTotalLines = 0;
+  /** Cached log panel bounds for hit testing */
+  private logBounds = { x: 0, y: 0, w: 0, h: 0 };
+
   constructor(ctx: CanvasRenderingContext2D, engine: GameEngine) {
     this.ctx = ctx;
     this.engine = engine;
@@ -67,6 +74,27 @@ export class HUD {
       }
     }
     return false;
+  }
+
+  /**
+   * Handle scroll wheel. Returns true if the cursor is over the log panel
+   * (consumed — don't zoom the map).
+   */
+  handleScroll(screenX: number, screenY: number, deltaY: number): boolean {
+    const b = this.logBounds;
+    if (screenX >= b.x && screenX <= b.x + b.w &&
+        screenY >= b.y && screenY <= b.y + b.h) {
+      // Scroll up = positive offset (older entries), scroll down = toward newest
+      this.logScrollOffset += deltaY > 0 ? -2 : 2;
+      this.logScrollOffset = Math.max(0, Math.min(this.logScrollOffset, Math.max(0, this.logTotalLines - 5)));
+      return true;
+    }
+    return false;
+  }
+
+  /** Reset scroll to bottom (newest) when new entries arrive */
+  resetLogScroll(): void {
+    this.logScrollOffset = 0;
   }
 
   // ── Top Bar ─────────────────────────────────────────────
@@ -134,7 +162,7 @@ export class HUD {
       locationId?: string;
     }[] = [];
 
-    const entries = state.eventLog.slice(-20); // take more, we'll trim by height
+    const entries = state.eventLog; // wrap all, then slice with scroll
 
     for (const entry of entries) {
       const prefix = `[${entry.turn}] `;
@@ -161,9 +189,18 @@ export class HUD {
       }
     }
 
-    // Only show lines that fit in the panel
+    // Store total for scroll clamping, and cache panel bounds
+    this.logTotalLines = allLines.length;
+    this.logBounds = { x: logX, y: logY, w: logWidth, h: logHeight };
+
+    // Clamp scroll offset
     const maxLines = Math.floor((logHeight - 12) / lineHeight);
-    const visibleLines = allLines.slice(-maxLines);
+    this.logScrollOffset = Math.max(0, Math.min(this.logScrollOffset, Math.max(0, allLines.length - maxLines)));
+
+    // Slice with scroll: offset 0 = newest at bottom
+    const endIdx = allLines.length - this.logScrollOffset;
+    const startIdx = Math.max(0, endIdx - maxLines);
+    const visibleLines = allLines.slice(startIdx, endIdx);
 
     let y = logY + 12;
     for (const line of visibleLines) {
@@ -201,6 +238,18 @@ export class HUD {
       }
 
       y += lineHeight;
+    }
+
+    // Scroll indicators
+    ctx.font = '8px monospace';
+    ctx.textAlign = 'right';
+    if (this.logScrollOffset > 0) {
+      ctx.fillStyle = PALETTE.uiHighlight;
+      ctx.fillText('▼ newer', logX + logWidth - 8, logY + logHeight - 4);
+    }
+    if (startIdx > 0) {
+      ctx.fillStyle = PALETTE.uiHighlight;
+      ctx.fillText('▲ older', logX + logWidth - 8, logY + 10);
     }
   }
 

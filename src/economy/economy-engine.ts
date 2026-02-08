@@ -294,17 +294,42 @@ function tickResourceReplenishment(loc: Location, world: World): void {
   }
 }
 
-/** Update market prices based on supply and demand */
+/**
+ * Update market prices based on supply scarcity.
+ * Prices follow a curve: abundant stock → cheap, scarce stock → expensive.
+ *
+ *   qty >= 20  → 0.5× base (surplus — very cheap)
+ *   qty ~10    → 1.0× base (normal)
+ *   qty ~5     → 2.0× base (getting scarce)
+ *   qty ~2     → 4.0× base (rare — premium)
+ *   qty  1     → 6.0× base (last unit — very expensive)
+ */
 function updateMarketPrices(loc: Location): void {
+  // Track total quantity per resource
+  const totals = new Map<string, number>();
   for (const stack of loc.storage) {
-    const def = RESOURCE_DEFINITIONS[stack.resourceId];
+    totals.set(stack.resourceId, (totals.get(stack.resourceId) ?? 0) + stack.quantity);
+  }
+
+  for (const [resourceId, quantity] of totals) {
+    const def = RESOURCE_DEFINITIONS[resourceId];
     if (!def) continue;
 
-    // Price adjusts based on abundance: more supply = lower price
-    const supplyRatio = stack.quantity / (def.stackSize * 2);
-    const priceMultiplier = Math.max(0.5, Math.min(3.0, 1.5 - supplyRatio));
-    loc.marketPrices[stack.resourceId] = Math.round(def.baseValue * priceMultiplier);
+    const multiplier = getScarcityMultiplier(quantity);
+    loc.marketPrices[resourceId] = Math.max(1, Math.round(def.baseValue * multiplier));
   }
+}
+
+/** Scarcity price curve — fewer goods = higher price */
+function getScarcityMultiplier(quantity: number): number {
+  if (quantity <= 0) return 10;
+  if (quantity <= 1) return 6;
+  if (quantity <= 3) return 4;
+  if (quantity <= 5) return 2.5;
+  if (quantity <= 10) return 1.5;
+  if (quantity <= 20) return 1.0;
+  if (quantity <= 40) return 0.75;
+  return 0.5;
 }
 
 /** Tick location growth or decline */

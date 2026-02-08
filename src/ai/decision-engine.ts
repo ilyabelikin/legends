@@ -251,7 +251,7 @@ export function decideCreatureAction(
   return { dx: 0, dy: 0, behavior: creature.behavior };
 }
 
-/** Dragon-specific AI */
+/** Dragon-specific AI — dragons are active flyers, not static */
 function decideDragonAction(
   creature: Creature,
   world: World,
@@ -259,43 +259,63 @@ function decideDragonAction(
   distToParty: number,
   rng: SeededRandom,
 ): { dx: number; dy: number; behavior: CreatureBehavior } {
-  // Dragons occasionally migrate
-  if (rng.chance(0.02)) {
+  const distToHome = creature.homePosition
+    ? manhattanDist(creature.position, creature.homePosition)
+    : 0;
+
+  // Chase party if fairly close
+  if (distToParty < 8) {
     return {
-      dx: rng.nextInt(-2, 2),
-      dy: rng.nextInt(-2, 2),
+      dx: Math.sign(partyPos.x - creature.position.x) * 2,
+      dy: Math.sign(partyPos.y - creature.position.y) * 2,
+      behavior: 'hunting',
+    };
+  }
+
+  // Fly toward a settlement to menace it (10% chance per turn)
+  if (rng.chance(0.10)) {
+    let targetLoc: Location | null = null;
+    let targetDist = Infinity;
+    for (const loc of world.locations.values()) {
+      if (loc.isDestroyed) continue;
+      const dist = manhattanDist(creature.position, loc.position);
+      if (dist < targetDist && dist < 30) {
+        targetDist = dist;
+        targetLoc = loc;
+      }
+    }
+    if (targetLoc) {
+      // Fly 2-3 tiles toward the settlement
+      const dx = Math.sign(targetLoc.position.x - creature.position.x) * rng.nextInt(1, 3);
+      const dy = Math.sign(targetLoc.position.y - creature.position.y) * rng.nextInt(1, 3);
+      return { dx, dy, behavior: 'aggressive' };
+    }
+  }
+
+  // Long-range migration — fly to a random distant point (8% chance)
+  if (rng.chance(0.08)) {
+    return {
+      dx: rng.nextInt(-3, 3),
+      dy: rng.nextInt(-3, 3),
       behavior: 'migrating',
     };
   }
 
-  // Dragons attack nearby settlements
-  if (rng.chance(0.05)) {
-    // Find nearest settlement
-    let nearestLoc: Location | null = null;
-    let nearestDist = Infinity;
-    for (const loc of world.locations.values()) {
-      if (loc.isDestroyed) continue;
-      const dist = manhattanDist(creature.position, loc.position);
-      if (dist < nearestDist && dist < 15) {
-        nearestDist = dist;
-        nearestLoc = loc;
-      }
-    }
-    if (nearestLoc) {
-      return {
-        dx: Math.sign(nearestLoc.position.x - creature.position.x),
-        dy: Math.sign(nearestLoc.position.y - creature.position.y),
-        behavior: 'aggressive',
-      };
-    }
+  // Return toward lair if very far away
+  if (distToHome > creature.wanderRadius && creature.homePosition) {
+    return {
+      dx: Math.sign(creature.homePosition.x - creature.position.x) * 2,
+      dy: Math.sign(creature.homePosition.y - creature.position.y) * 2,
+      behavior: 'territorial',
+    };
   }
 
-  // Chase party if close
-  if (distToParty < 6) {
+  // Patrol around lair — circle and wander (40% chance to move)
+  if (rng.chance(0.4)) {
     return {
-      dx: Math.sign(partyPos.x - creature.position.x),
-      dy: Math.sign(partyPos.y - creature.position.y),
-      behavior: 'hunting',
+      dx: rng.nextInt(-2, 2),
+      dy: rng.nextInt(-2, 2),
+      behavior: 'territorial',
     };
   }
 
