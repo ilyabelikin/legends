@@ -100,12 +100,12 @@ export function spawnCreatures(
       homeLocationId: null,
     };
 
-    // Generate loot
+    // Generate loot (not multiplied by packSize - pack size already increases difficulty)
     for (const lootEntry of def.lootTable) {
       if (rng.chance(lootEntry.chance)) {
         creature.loot.push({
           resourceId: lootEntry.resourceId,
-          quantity: rng.nextInt(lootEntry.quantity[0], lootEntry.quantity[1]) * packSize,
+          quantity: rng.nextInt(lootEntry.quantity[0], lootEntry.quantity[1]),
           quality: 0.5 + rng.next() * 0.5,
           age: 0,
         });

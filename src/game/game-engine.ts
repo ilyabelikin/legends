@@ -136,6 +136,7 @@ export class GameEngine {
       isPaused: false,
       selectedTile: null,
       viewMode: 'world',
+      combatAnimation: null,
     };
 
     // Set initial visibility
@@ -539,9 +540,17 @@ export class GameEngine {
 
         party.actionPoints -= 1;
         party.gold -= price;
+        
+        // Get the food's quality before removing it from storage
+        const foodQuality = loc.storage[stackIdx].quality;
+        
         loc.storage[stackIdx].quantity--;
         if (loc.storage[stackIdx].quantity <= 0) loc.storage.splice(stackIdx, 1);
 
+        // Add 1 unit of food to party inventory
+        this.addToPartyInventory(foodId, 1, foodQuality);
+
+        // Also immediately restore food need
         for (const member of party.members) {
           member.needs.food = Math.min(100, member.needs.food + 25);
         }
@@ -574,8 +583,9 @@ export class GameEngine {
     
     for (const creature of world.creatures.values()) {
       if (creature.position.x === party.position.x && creature.position.y === party.position.y) {
-        // Can hunt passive game animals
-        if (creature.type === 'deer' || creature.type === 'sheep' || creature.type === 'boar') {
+        // Can hunt game animals (not bandits, dragons, guards, armies, traders, hunters)
+        const huntableTypes = ['deer', 'sheep', 'boar', 'wolf', 'bear'];
+        if (huntableTypes.includes(creature.type)) {
           return creature.health > 0;
         }
       }
@@ -596,9 +606,10 @@ export class GameEngine {
 
     // Find huntable creature at position
     let target: Creature | null = null;
+    const huntableTypes = ['deer', 'sheep', 'boar', 'wolf', 'bear'];
     for (const creature of world.creatures.values()) {
       if (creature.position.x === party.position.x && creature.position.y === party.position.y) {
-        if ((creature.type === 'deer' || creature.type === 'sheep' || creature.type === 'boar') && creature.health > 0) {
+        if (huntableTypes.includes(creature.type) && creature.health > 0) {
           target = creature;
           break;
         }
@@ -635,6 +646,17 @@ export class GameEngine {
       }
     }
 
+    // Start combat animation for hunting (300ms per round, faster than combat)
+    this.state.combatAnimation = {
+      active: true,
+      partyPos: { ...party.position },
+      enemyPos: { ...target.position },
+      enemyId: target.id,
+      startTime: Date.now(),
+      duration: rounds * 300,
+      rounds: rounds
+    };
+
     if (target.health <= 0) {
       // Collect loot into party inventory
       for (const loot of target.loot) {
@@ -649,8 +671,7 @@ export class GameEngine {
         this.addLog(`Hunt successful (took ${Math.round(damageTaken)} dmg).`, 'info');
       }
       
-      // Remove creature immediately from world
-      world.creatures.delete(target.id);
+      // Remove creature after animation completes (handled in renderer)
     } else {
       this.addLog(`Hunt failed - ${label} escaped!`, 'info');
     }
@@ -678,6 +699,128 @@ export class GameEngine {
     const loc = this.state.world.locations.get(tile.locationId);
     if (!loc || loc.isDestroyed) return false;
     return loc.buildings.some(b => b.isOperational && b.type === 'market') && this.state.party.inventory.length > 0;
+  }
+
+  /** Buy 1 unit of a specific market item */
+  buyMarketItem(resourceId: string, storageIndex: number): boolean {
+    const { party, world } = this.state;
+    
+    const tile = world.tiles[party.position.y]?.[party.position.x];
+    if (!tile?.locationId) {
+      this.addLog('No settlement here.', 'system');
+      return false;
+    }
+    
+    const loc = world.locations.get(tile.locationId);
+    if (!loc || loc.isDestroyed) {
+      this.addLog('This settlement is destroyed.', 'system');
+      return false;
+    }
+
+    const hasMarket = loc.buildings.some(b => b.isOperational && b.type === 'market');
+    if (!hasMarket) {
+      this.addLog('No marketplace here.', 'system');
+      return false;
+    }
+
+    if (storageIndex < 0 || storageIndex >= loc.storage.length) {
+      this.addLog('Item no longer available.', 'system');
+      return false;
+    }
+
+    const stack = loc.storage[storageIndex];
+    if (stack.quantity <= 0) {
+      this.addLog('Out of stock.', 'system');
+      return false;
+    }
+
+    const price = loc.marketPrices[resourceId] ?? 3;
+    const buyPrice = Math.floor(price * stack.quality);
+    
+    if (party.gold < buyPrice) {
+      this.addLog(`Cannot afford ${resourceId} — costs ${buyPrice}g.`, 'system');
+      return false;
+    }
+
+    // Buy 1 unit
+    party.gold -= buyPrice;
+    stack.quantity -= 1;
+    
+    // Remove stack if empty
+    if (stack.quantity <= 0) {
+      loc.storage.splice(storageIndex, 1);
+    }
+
+    // Add to party inventory
+    this.addToPartyInventory(resourceId, 1, stack.quality);
+    
+    this.addLog(`Bought 1 ${resourceId} for ${buyPrice}g.`, 'trade', loc.id);
+    
+    // Restore food need if it's food
+    const foodTypes = ['bread', 'meat', 'fish', 'berries', 'wheat', 'exotic_fruit'];
+    if (foodTypes.includes(resourceId)) {
+      for (const member of party.members) {
+        member.needs.food = Math.min(100, member.needs.food + 25);
+      }
+    }
+    
+    return true;
+  }
+
+  /** Sell a specific inventory item at current marketplace */
+  sellInventoryItem(itemIndex: number): boolean {
+    const { party, world } = this.state;
+    
+    if (itemIndex < 0 || itemIndex >= party.inventory.length) {
+      this.addLog('Invalid item.', 'system');
+      return false;
+    }
+    
+    const tile = world.tiles[party.position.y]?.[party.position.x];
+    if (!tile?.locationId) {
+      this.addLog('No settlement here to sell at.', 'system');
+      return false;
+    }
+    
+    const loc = world.locations.get(tile.locationId);
+    if (!loc || loc.isDestroyed) {
+      this.addLog('This settlement is destroyed.', 'system');
+      return false;
+    }
+
+    const hasMarket = loc.buildings.some(b => b.isOperational && b.type === 'market');
+    if (!hasMarket) {
+      this.addLog('No marketplace here.', 'system');
+      return false;
+    }
+
+    const stack = party.inventory[itemIndex];
+    const def = RESOURCE_DEFINITIONS[stack.resourceId];
+    if (!def) return false;
+    
+    const price = loc.marketPrices[stack.resourceId] ?? def.baseValue;
+    const value = Math.floor(stack.quantity * price * stack.quality);
+    
+    party.gold += value;
+    this.addLog(`Sold ${formatQuantity(stack.quantity)} ${stack.resourceId} for ${value}g.`, 'trade', loc.id);
+    
+    // Add sold items to settlement storage
+    const existingStack = loc.storage.find(s => s.resourceId === stack.resourceId && Math.abs(s.quality - stack.quality) < 0.1);
+    if (existingStack) {
+      existingStack.quantity += stack.quantity;
+    } else {
+      loc.storage.push({
+        resourceId: stack.resourceId,
+        quantity: stack.quantity,
+        quality: stack.quality,
+        age: 0
+      });
+    }
+    
+    // Remove from inventory
+    party.inventory.splice(itemIndex, 1);
+    
+    return true;
   }
 
   /** Sell all inventory at current marketplace */
@@ -710,6 +853,19 @@ export class GameEngine {
         const value = Math.floor(stack.quantity * price * stack.quality);
         totalGold += value;
         this.addLog(`Sold ${formatQuantity(stack.quantity)} ${stack.resourceId} for ${value}g.`, 'trade', loc.id);
+        
+        // Add sold items to settlement storage so they enter the economy
+        const existingStack = loc.storage.find(s => s.resourceId === stack.resourceId && Math.abs(s.quality - stack.quality) < 0.1);
+        if (existingStack) {
+          existingStack.quantity += stack.quantity;
+        } else {
+          loc.storage.push({
+            resourceId: stack.resourceId,
+            quantity: stack.quantity,
+            quality: stack.quality,
+            age: 0
+          });
+        }
       }
     }
 
@@ -789,6 +945,17 @@ export class GameEngine {
       }
     }
 
+    // Start combat animation (400ms per round)
+    this.state.combatAnimation = {
+      active: true,
+      partyPos: { ...party.position },
+      enemyPos: { ...creature.position },
+      enemyId: creature.id,
+      startTime: Date.now(),
+      duration: rounds * 400,
+      rounds: rounds
+    };
+
     // Always write back HP to both sides
     creature.health = Math.max(0, creatureHP);
     leader.health = Math.max(1, partyHP);
@@ -802,8 +969,8 @@ export class GameEngine {
       }
       // XP gain
       leader.skills['combat'] = Math.min(100, (leader.skills['combat'] ?? 0) + 3);
-      // Remove creature immediately from world
-      this.state.world.creatures.delete(creature.id);
+      // Remove creature immediately from world (after animation completes)
+      // Animation will handle cleanup
     } else {
       this.addLog(
         `Fought ${label} for ${rounds} rounds — dealt ${Math.round(totalDmgDealt)} dmg, took ${Math.round(totalDmgTaken)}. ` +
@@ -896,8 +1063,8 @@ export class GameEngine {
           if (country) info.push(`Country: ${country.name}`);
         }
         // Show key goods and prices
-        const goods = loc.storage
-          .filter(s => s.quantity > 0)
+        const allGoods = loc.storage.filter(s => s.quantity > 0);
+        const goods = allGoods
           .sort((a, b) => b.quantity - a.quantity)
           .slice(0, 4);
         if (goods.length > 0) {
@@ -905,6 +1072,11 @@ export class GameEngine {
           for (const g of goods) {
             const price = loc.marketPrices[g.resourceId] ?? '?';
             info.push(`  ${g.resourceId}: ${formatQuantity(g.quantity)} (${price}g)`);
+          }
+          // Show if there are more items
+          const remaining = allGoods.length - goods.length;
+          if (remaining > 0) {
+            info.push(`  ...and ${remaining} more item${remaining === 1 ? '' : 's'}`);
           }
         }
       }

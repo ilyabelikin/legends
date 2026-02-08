@@ -1,7 +1,9 @@
 import type { GameState, EventLogEntry } from '../types/game';
 import type { GameEngine } from '../game/game-engine';
 import type { Renderer } from '../render/renderer';
+import type { Location } from '../types/location';
 import { PALETTE } from '../render/palette';
+import { getItemSprite } from '../render/sprites/item-sprites';
 
 /** A clickable region in the event log */
 interface LogHitArea {
@@ -10,6 +12,25 @@ interface LogHitArea {
   w: number;
   h: number;
   locationId: string;
+}
+
+/** A clickable sell button in inventory */
+interface SellButtonArea {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  itemIndex: number;
+}
+
+/** A clickable buy button in market */
+interface BuyButtonArea {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  resourceId: string;
+  storageIndex: number;
 }
 
 /**
@@ -34,6 +55,12 @@ export class HUD {
   private logBounds = { x: 0, y: 0, w: 0, h: 0 };
   /** Whether to show the inventory panel */
   private showInventory = false;
+  /** Clickable sell button regions in inventory */
+  private sellButtonAreas: SellButtonArea[] = [];
+  /** Clickable buy button regions in market */
+  private buyButtonAreas: BuyButtonArea[] = [];
+  /** Current inventory tab: 'inventory' or 'market' */
+  private inventoryTab: 'inventory' | 'market' = 'inventory';
 
   constructor(ctx: CanvasRenderingContext2D, engine: GameEngine) {
     this.ctx = ctx;
@@ -48,6 +75,63 @@ export class HUD {
   /** Toggle inventory panel visibility */
   toggleInventory(): void {
     this.showInventory = !this.showInventory;
+  }
+
+  /** Check if inventory is currently shown (blocks input) */
+  isInventoryOpen(): boolean {
+    return this.showInventory;
+  }
+
+  /** Handle click on inventory sell/buy buttons and tabs */
+  handleInventoryClick(screenX: number, screenY: number): boolean {
+    if (!this.showInventory) return false;
+    
+    // Check tab clicks (basic tab switching areas)
+    const state = this.engine.state;
+    const tile = state.world.tiles[state.party.position.y]?.[state.party.position.x];
+    const loc = tile?.locationId ? state.world.locations.get(tile.locationId) : null;
+    const atMarket = loc && !loc.isDestroyed && loc.buildings.some(b => b.isOperational && b.type === 'market');
+    
+    if (atMarket) {
+      const margin = 80;
+      const panelX = margin;
+      const panelY = margin;
+      
+      // Inventory tab area
+      if (screenX >= panelX + 20 && screenX <= panelX + 120 && screenY >= panelY + 100 && screenY <= panelY + 120) {
+        this.inventoryTab = 'inventory';
+        return true;
+      }
+      // Market tab area
+      if (screenX >= panelX + 130 && screenX <= panelX + 230 && screenY >= panelY + 100 && screenY <= panelY + 120) {
+        this.inventoryTab = 'market';
+        return true;
+      }
+    }
+    
+    // Check sell button clicks
+    for (const area of this.sellButtonAreas) {
+      if (
+        screenX >= area.x && screenX <= area.x + area.w &&
+        screenY >= area.y && screenY <= area.y + area.h
+      ) {
+        this.engine.sellInventoryItem(area.itemIndex);
+        return true;
+      }
+    }
+    
+    // Check buy button clicks
+    for (const area of this.buyButtonAreas) {
+      if (
+        screenX >= area.x && screenX <= area.x + area.w &&
+        screenY >= area.y && screenY <= area.y + area.h
+      ) {
+        this.engine.buyMarketItem(area.resourceId, area.storageIndex);
+        return true;
+      }
+    }
+    
+    return false;
   }
 
   /** Render all HUD elements */
@@ -283,12 +367,6 @@ export class HUD {
     if (this.engine.canHunt()) {
       hints.push('H: Hunt');
     }
-    if (this.engine.canBuyFood()) {
-      hints.push('F: Buy Food');
-    }
-    if (this.engine.canSell()) {
-      hints.push('V: Sell');
-    }
     if (this.engine.canEmbark()) {
       hints.push('B: Board Boat');
     }
@@ -414,38 +492,301 @@ export class HUD {
 
   private renderInventory(state: GameState): void {
     const { party } = state;
-
     const ctx = this.ctx;
-    const panelWidth = 240;
-    const maxItems = 8;
-    const panelHeight = Math.min(party.inventory.length, maxItems) * 16 + 40;
-    const panelX = this.width - panelWidth - 12;
-    const panelY = this.height - panelHeight - 160;
+    
+    // Clear sell/buy button areas
+    this.sellButtonAreas = [];
+    this.buyButtonAreas = [];
+    
+    // Check if at marketplace
+    const tile = state.world.tiles[party.position.y]?.[party.position.x];
+    const loc = tile?.locationId ? state.world.locations.get(tile.locationId) : null;
+    const atMarket = loc && !loc.isDestroyed && loc.buildings.some(b => b.isOperational && b.type === 'market');
+    
+    // Full-screen overlay
+    const margin = 80;
+    const panelWidth = this.width - margin * 2;
+    const panelHeight = this.height - margin * 2;
+    const panelX = margin;
+    const panelY = margin;
 
-    ctx.fillStyle = 'rgba(10,10,20,0.85)';
+    // Semi-transparent dark background
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(0, 0, this.width, this.height);
+
+    // Main panel
+    ctx.fillStyle = 'rgba(20, 20, 30, 0.95)';
     ctx.fillRect(panelX, panelY, panelWidth, panelHeight);
     ctx.strokeStyle = PALETTE.uiBorder;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 2;
     ctx.strokeRect(panelX, panelY, panelWidth, panelHeight);
 
+    // Title
     ctx.fillStyle = PALETTE.uiHighlight;
-    ctx.font = '10px monospace';
-    ctx.textAlign = 'left';
-    ctx.fillText('INVENTORY', panelX + 8, panelY + 14);
+    ctx.font = 'bold 16px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(atMarket ? 'TRADING' : 'INVENTORY', this.width / 2, panelY + 30);
 
-    let y = panelY + 30;
-    const itemsToShow = party.inventory.slice(0, maxItems);
-    for (const stack of itemsToShow) {
-      const qtyStr = (Math.round(stack.quantity * 10) / 10).toFixed(1);
-      const qualStr = (stack.quality * 100).toFixed(0);
-      ctx.fillStyle = '#b0a090';
-      ctx.fillText(`${stack.resourceId}: ${qtyStr} (${qualStr}%)`, panelX + 8, y);
-      y += 16;
+    // Close hint
+    ctx.font = '10px monospace';
+    ctx.fillStyle = '#8a8070';
+    ctx.fillText('Press I or ESC to close', this.width / 2, panelY + 50);
+
+    // Gold display
+    ctx.font = '12px monospace';
+    ctx.fillStyle = PALETTE.uiHighlight;
+    ctx.textAlign = 'left';
+    ctx.fillText(`Gold: ${party.gold}`, panelX + 20, panelY + 80);
+
+    // Party leader stats
+    const leader = party.members[0];
+    if (leader) {
+      ctx.fillText(`HP: ${Math.round(leader.health)}/${leader.maxHealth}`, panelX + 180, panelY + 80);
+      ctx.fillText(`Food Need: ${Math.round(leader.needs.food)}`, panelX + 340, panelY + 80);
+    }
+    
+    // Tabs if at market
+    if (atMarket && loc) {
+      // Inventory tab
+      const invTabX = panelX + 20;
+      const invTabY = panelY + 100;
+      const tabW = 100;
+      const tabH = 20;
+      
+      ctx.fillStyle = this.inventoryTab === 'inventory' ? 'rgba(80, 80, 100, 0.8)' : 'rgba(40, 40, 50, 0.6)';
+      ctx.fillRect(invTabX, invTabY, tabW, tabH);
+      ctx.strokeStyle = this.inventoryTab === 'inventory' ? PALETTE.uiHighlight : '#4a4a5a';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(invTabX, invTabY, tabW, tabH);
+      ctx.fillStyle = PALETTE.uiHighlight;
+      ctx.font = 'bold 10px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('INVENTORY', invTabX + tabW / 2, invTabY + 14);
+      
+      // Market tab
+      const mktTabX = panelX + 130;
+      ctx.fillStyle = this.inventoryTab === 'market' ? 'rgba(80, 80, 100, 0.8)' : 'rgba(40, 40, 50, 0.6)';
+      ctx.fillRect(mktTabX, invTabY, tabW, tabH);
+      ctx.strokeStyle = this.inventoryTab === 'market' ? PALETTE.uiHighlight : '#4a4a5a';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(mktTabX, invTabY, tabW, tabH);
+      ctx.fillStyle = PALETTE.uiHighlight;
+      ctx.fillText('MARKET', mktTabX + tabW / 2, invTabY + 14);
     }
 
-    if (party.inventory.length > maxItems) {
+    const startY = atMarket ? panelY + 130 : panelY + 110;
+    
+    // Render active tab content
+    if (atMarket && loc && this.inventoryTab === 'market') {
+      this.renderMarketTab(loc, panelX, startY, panelWidth);
+      return;
+    }
+
+    // Render inventory tab (default)
+    this.renderInventoryTab(state, loc, atMarket, panelX, startY, panelWidth);
+  }
+
+  private renderInventoryTab(state: GameState, loc: Location | null, atMarket: boolean, panelX: number, startY: number, panelWidth: number): void {
+    const { party } = state;
+    const ctx = this.ctx;
+    
+    ctx.font = '12px monospace';
+    ctx.fillStyle = PALETTE.uiHighlight;
+    ctx.textAlign = 'left';
+    ctx.fillText('YOUR ITEMS:', panelX + 20, startY);
+
+    if (party.inventory.length === 0) {
       ctx.fillStyle = '#8a8070';
-      ctx.fillText(`... +${party.inventory.length - maxItems} more`, panelX + 8, y);
+      ctx.fillText('(empty - hunt animals or trade to gather items)', panelX + 20, startY + 30);
+      return;
+    }
+
+    // Draw items in a grid layout
+    const itemsPerRow = 2;
+    const columnWidth = (panelWidth - 60) / itemsPerRow;
+    let row = 0;
+    let col = 0;
+
+    for (let i = 0; i < party.inventory.length; i++) {
+      const stack = party.inventory[i];
+      const x = panelX + 20 + col * columnWidth;
+      const y = startY + 30 + row * 60;
+
+      // Item box
+      ctx.fillStyle = 'rgba(40, 40, 50, 0.8)';
+      ctx.fillRect(x, y, columnWidth - 10, 50);
+      ctx.strokeStyle = '#4a4a5a';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x, y, columnWidth - 10, 50);
+
+      // Draw item icon
+      const sprite = getItemSprite(stack.resourceId);
+      ctx.drawImage(sprite, x + 8, y + 8);
+
+      // Item name
+      ctx.fillStyle = PALETTE.uiHighlight;
+      ctx.font = 'bold 11px monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText(stack.resourceId.toUpperCase(), x + 28, y + 18);
+
+      // Quantity and quality
+      const qtyStr = (Math.round(stack.quantity * 10) / 10).toFixed(1);
+      const qualStr = (stack.quality * 100).toFixed(0);
+      ctx.font = '10px monospace';
+      ctx.fillStyle = '#b0a090';
+      ctx.fillText(`Qty: ${qtyStr}`, x + 28, y + 34);
+      ctx.fillText(`Quality: ${qualStr}%`, x + 28, y + 46);
+
+      // Sell button if at market
+      if (atMarket && loc) {
+        const price = loc.marketPrices[stack.resourceId] ?? 3;
+        const sellValue = Math.floor(price * stack.quality * stack.quantity);
+        
+        const btnX = x + columnWidth - 90;
+        const btnY = y + 10;
+        const btnW = 80;
+        const btnH = 30;
+        
+        // Button background
+        ctx.fillStyle = 'rgba(80, 140, 80, 0.8)';
+        ctx.fillRect(btnX, btnY, btnW, btnH);
+        ctx.strokeStyle = '#60b060';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(btnX, btnY, btnW, btnH);
+        
+        // Button text
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 10px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('SELL', btnX + btnW / 2, btnY + 13);
+        ctx.font = '9px monospace';
+        ctx.fillStyle = '#e0e0e0';
+        ctx.fillText(`${sellValue}g`, btnX + btnW / 2, btnY + 25);
+        
+        // Register click area
+        this.sellButtonAreas.push({
+          x: btnX,
+          y: btnY,
+          w: btnW,
+          h: btnH,
+          itemIndex: i
+        });
+      }
+
+      col++;
+      if (col >= itemsPerRow) {
+        col = 0;
+        row++;
+      }
+    }
+  }
+
+  private renderMarketTab(loc: Location, panelX: number, startY: number, panelWidth: number): void {
+    const ctx = this.ctx;
+    const party = this.engine.state.party;
+    
+    ctx.font = '12px monospace';
+    ctx.fillStyle = PALETTE.uiHighlight;
+    ctx.textAlign = 'left';
+    ctx.fillText(`MARKET GOODS (${loc.name}):`, panelX + 20, startY);
+
+    // Filter to food and common goods
+    const marketGoods = loc.storage.filter(s => s.quantity > 0);
+    
+    if (marketGoods.length === 0) {
+      ctx.fillStyle = '#8a8070';
+      ctx.fillText('(no goods available for purchase)', panelX + 20, startY + 30);
+      return;
+    }
+
+    // Draw market goods in a grid
+    const itemsPerRow = 2;
+    const columnWidth = (panelWidth - 60) / itemsPerRow;
+    let row = 0;
+    let col = 0;
+
+    for (let i = 0; i < marketGoods.length; i++) {
+      const stack = marketGoods[i];
+      const x = panelX + 20 + col * columnWidth;
+      const y = startY + 30 + row * 60;
+
+      // Item box
+      ctx.fillStyle = 'rgba(40, 40, 50, 0.8)';
+      ctx.fillRect(x, y, columnWidth - 10, 50);
+      ctx.strokeStyle = '#4a4a5a';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x, y, columnWidth - 10, 50);
+
+      // Draw item icon
+      const sprite = getItemSprite(stack.resourceId);
+      ctx.drawImage(sprite, x + 8, y + 8);
+
+      // Item name
+      ctx.fillStyle = PALETTE.uiHighlight;
+      ctx.font = 'bold 11px monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText(stack.resourceId.toUpperCase(), x + 28, y + 18);
+
+      // Quantity and quality
+      const qtyStr = (Math.round(stack.quantity * 10) / 10).toFixed(1);
+      const qualStr = (stack.quality * 100).toFixed(0);
+      ctx.font = '10px monospace';
+      ctx.fillStyle = '#b0a090';
+      ctx.fillText(`Stock: ${qtyStr}`, x + 28, y + 34);
+      ctx.fillText(`Quality: ${qualStr}%`, x + 28, y + 46);
+
+      // Buy button
+      const price = loc.marketPrices[stack.resourceId] ?? 3;
+      const buyValue = Math.floor(price * stack.quality);
+      
+      const btnX = x + columnWidth - 90;
+      const btnY = y + 10;
+      const btnW = 80;
+      const btnH = 30;
+      
+      // Check if can afford
+      const canAfford = party.gold >= buyValue;
+      
+      // Button background
+      ctx.fillStyle = canAfford ? 'rgba(80, 120, 180, 0.8)' : 'rgba(80, 60, 60, 0.6)';
+      ctx.fillRect(btnX, btnY, btnW, btnH);
+      ctx.strokeStyle = canAfford ? '#5090d0' : '#604040';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(btnX, btnY, btnW, btnH);
+      
+      // Button text
+      ctx.fillStyle = canAfford ? '#ffffff' : '#909090';
+      ctx.font = 'bold 10px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('BUY', btnX + btnW / 2, btnY + 13);
+      ctx.font = '9px monospace';
+      ctx.fillStyle = canAfford ? '#e0e0e0' : '#808080';
+      ctx.fillText(`${buyValue}g`, btnX + btnW / 2, btnY + 25);
+      
+      // Register click area if can afford
+      if (canAfford) {
+        // Find the original index in loc.storage
+        const originalIndex = loc.storage.findIndex(s => 
+          s.resourceId === stack.resourceId && 
+          Math.abs(s.quality - stack.quality) < 0.01 &&
+          Math.abs(s.quantity - stack.quantity) < 0.01
+        );
+        
+        this.buyButtonAreas.push({
+          x: btnX,
+          y: btnY,
+          w: btnW,
+          h: btnH,
+          resourceId: stack.resourceId,
+          storageIndex: originalIndex
+        });
+      }
+
+      col++;
+      if (col >= itemsPerRow) {
+        col = 0;
+        row++;
+      }
     }
   }
 }

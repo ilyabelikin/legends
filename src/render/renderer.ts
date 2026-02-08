@@ -121,21 +121,60 @@ export class Renderer {
       }
     }
 
+    // Calculate combat animation offsets and rotations
+    const combatAnim = state.combatAnimation;
+    let partyCombatOffset = { x: 0, y: 0 };
+    let enemyCombatOffset = { x: 0, y: 0 };
+    let partyRotation = 0;
+    let enemyRotation = 0;
+    
+    if (combatAnim && combatAnim.active) {
+      const elapsed = Date.now() - combatAnim.startTime;
+      const progress = Math.min(elapsed / combatAnim.duration, 1);
+      
+      // Oscillate back and forth (sine wave)
+      const oscillation = Math.sin(progress * Math.PI * 2 * combatAnim.rounds);
+      const amplitude = 2; // pixels to move side-to-side (reduced for subtlety)
+      
+      partyCombatOffset = { x: oscillation * amplitude, y: 0 };
+      enemyCombatOffset = { x: -oscillation * amplitude, y: 0 }; // opposite direction
+      
+      // Add rotation/leaning (tilt back and forth)
+      const rotationAmplitude = 0.15; // radians (~8.5 degrees)
+      partyRotation = oscillation * rotationAmplitude;
+      enemyRotation = -oscillation * rotationAmplitude; // opposite lean
+      
+      // Clean up animation when done
+      if (progress >= 1) {
+        // Remove dead enemies after animation
+        const enemy = world.creatures.get(combatAnim.enemyId);
+        if (enemy && enemy.health <= 0) {
+          world.creatures.delete(combatAnim.enemyId);
+        }
+        state.combatAnimation = null;
+      }
+    }
+
     // Render creatures (only on visible tiles)
     for (const creature of world.creatures.values()) {
       const { x, y } = creature.position;
       if (x >= range.minX && x <= range.maxX && y >= range.minY && y <= range.maxY) {
         const tile = world.tiles[y][x];
         if (tile.visible) {
-          this.renderCreature(ctx, creature, tile.elevation, party.position);
+          // Apply combat offset and rotation if this creature is in combat
+          const offset = (combatAnim && combatAnim.enemyId === creature.id) ? enemyCombatOffset : { x: 0, y: 0 };
+          const rot = (combatAnim && combatAnim.enemyId === creature.id) ? enemyRotation : 0;
+          this.renderCreature(ctx, creature, tile.elevation, party.position, offset, rot);
         }
       }
     }
 
     // Render player party
+    const partyOffset = combatAnim ? partyCombatOffset : { x: 0, y: 0 };
+    const partyRot = combatAnim ? partyRotation : 0;
     this.renderParty(ctx, party.position.x, party.position.y,
       world.tiles[party.position.y]?.[party.position.x]?.elevation ?? 0.3,
-      party.isSailing);
+      party.isSailing, partyOffset, partyRot);
 
     // Render selection highlight
     if (state.selectedTile) {
@@ -518,7 +557,9 @@ export class Renderer {
     ctx: CanvasRenderingContext2D,
     creature: Creature,
     elevation: number,
-    partyPos: { x: number; y: number }
+    partyPos: { x: number; y: number },
+    combatOffset: { x: number; y: number } = { x: 0, y: 0 },
+    rotation: number = 0
   ): void {
     const { x, y } = creature.position;
     let sx = (x - y) * (TILE_WIDTH / 2);
@@ -532,15 +573,33 @@ export class Renderer {
       sy += 6;
     }
 
+    // Apply combat animation offset
+    sx += combatOffset.x;
+    sy += combatOffset.y;
+
     const sprite = getCreatureSprite(creature.type);
-    ctx.drawImage(sprite, sx - 8, sy - elevOffset - 16);
+    
+    // Apply rotation if in combat
+    if (rotation !== 0) {
+      ctx.save();
+      ctx.translate(sx, sy - elevOffset - 8); // center of sprite
+      ctx.rotate(rotation);
+      ctx.drawImage(sprite, -8, -8);
+      ctx.restore();
+    } else {
+      ctx.drawImage(sprite, sx - 8, sy - elevOffset - 16);
+    }
   }
 
   /** Render the player party */
-  private renderParty(ctx: CanvasRenderingContext2D, px: number, py: number, elevation: number, isSailing = false): void {
-    const sx = (px - py) * (TILE_WIDTH / 2);
-    const sy = (px + py) * (TILE_HEIGHT / 2);
+  private renderParty(ctx: CanvasRenderingContext2D, px: number, py: number, elevation: number, isSailing = false, combatOffset: { x: number; y: number } = { x: 0, y: 0 }, rotation: number = 0): void {
+    let sx = (px - py) * (TILE_WIDTH / 2);
+    let sy = (px + py) * (TILE_HEIGHT / 2);
     const elevOffset = Math.floor(elevation * 5) * ELEVATION_HEIGHT;
+
+    // Apply combat animation offset
+    sx += combatOffset.x;
+    sy += combatOffset.y;
 
     // Pulsing glow
     const pulse = Math.sin(this.animationTime * 3) * 0.3 + 0.7;
@@ -555,7 +614,17 @@ export class Renderer {
     // Party sprite (riding on top of boat when sailing)
     const sprite = getPartySprite();
     const yOff = isSailing ? -16 : -20; // sit lower in the boat
-    ctx.drawImage(sprite, sx - 8, sy - elevOffset + yOff);
+    
+    // Apply rotation if in combat
+    if (rotation !== 0) {
+      ctx.save();
+      ctx.translate(sx, sy - elevOffset + yOff + 12); // center of sprite
+      ctx.rotate(rotation);
+      ctx.drawImage(sprite, -8, -12);
+      ctx.restore();
+    } else {
+      ctx.drawImage(sprite, sx - 8, sy - elevOffset + yOff);
+    }
   }
 
   /** Draw a boat sprite for when the party is sailing */

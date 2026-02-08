@@ -317,6 +317,17 @@ function checkCreaturePartyCollision(state: GameState, rng: SeededRandom): void 
       creature.health = Math.max(0, creatureHP);
       leader.health = Math.max(1, partyHP);
 
+      // Start combat animation
+      state.combatAnimation = {
+        active: true,
+        partyPos: { ...state.party.position },
+        enemyPos: { ...creature.position },
+        enemyId: creature.id,
+        startTime: Date.now(),
+        duration: rounds * 400,
+        rounds: rounds
+      };
+
       // Log result
       if (creature.health <= 0) {
         state.eventLog.push({
@@ -344,8 +355,7 @@ function checkCreaturePartyCollision(state: GameState, rng: SeededRandom): void 
         }
         // XP gain
         leader.skills['combat'] = Math.min(100, (leader.skills['combat'] ?? 0) + 3);
-        // Remove creature immediately from world
-        world.creatures.delete(creature.id);
+        // Remove creature after animation completes (handled in renderer)
       } else {
         state.eventLog.push({
           turn: state.turn,

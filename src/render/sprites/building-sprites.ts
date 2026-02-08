@@ -130,10 +130,13 @@ function drawHouse(ctx: OffscreenCanvasRenderingContext2D, x: number, y: number)
 }
 
 function drawTownBuildings(ctx: OffscreenCanvasRenderingContext2D, color: string | null): void {
-  // Multiple buildings
-  drawHouse(ctx, 12, 40);
-  drawHouse(ctx, 28, 40);
-  drawHouse(ctx, 36, 40);
+  // Tower (draw first so it appears behind other buildings)
+  ctx.fillStyle = PALETTE.stoneWall;
+  ctx.fillRect(22, 6, 5, 8);
+  ctx.fillStyle = PALETTE.roofRed;
+  ctx.fillRect(21, 4, 7, 3);
+  ctx.fillRect(22, 3, 5, 1);
+  
   // Taller center building
   ctx.fillStyle = PALETTE.stoneWall;
   ctx.fillRect(18, 18, 12, 16);
@@ -142,12 +145,11 @@ function drawTownBuildings(ctx: OffscreenCanvasRenderingContext2D, color: string
   ctx.fillStyle = PALETTE.roofRedDark;
   ctx.fillRect(17, 14, 14, 4);
   ctx.fillRect(18, 12, 12, 2);
-  // Tower
-  ctx.fillStyle = PALETTE.stoneWall;
-  ctx.fillRect(22, 6, 5, 8);
-  ctx.fillStyle = PALETTE.roofRed;
-  ctx.fillRect(21, 4, 7, 3);
-  ctx.fillRect(22, 3, 5, 1);
+  
+  // Multiple buildings (draw last so they appear in front)
+  drawHouse(ctx, 12, 40);
+  drawHouse(ctx, 28, 40);
+  drawHouse(ctx, 36, 40);
 }
 
 function drawCityBuildings(ctx: OffscreenCanvasRenderingContext2D, color: string | null): void {

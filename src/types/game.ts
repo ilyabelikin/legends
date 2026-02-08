@@ -20,6 +20,17 @@ export interface Party {
   isSailing: boolean;
 }
 
+/** Combat animation state */
+export interface CombatAnimation {
+  active: boolean;
+  partyPos: { x: number; y: number };
+  enemyPos: { x: number; y: number };
+  enemyId: string;
+  startTime: number;
+  duration: number; // milliseconds
+  rounds: number;
+}
+
 /** Complete game state */
 export interface GameState {
   world: World;
@@ -38,6 +49,7 @@ export interface GameState {
   isPaused: boolean;
   selectedTile: { x: number; y: number } | null;
   viewMode: ViewMode;
+  combatAnimation: CombatAnimation | null;
 }
 
 /** An entry in the scrolling event log */

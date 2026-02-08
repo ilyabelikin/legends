@@ -237,15 +237,48 @@ const GOODS_CONSUMPTION: Partial<Record<string, { resourceId: string; rate: numb
     { resourceId: 'tools', rate: 0.1 },
     { resourceId: 'fabric', rate: 0.05 },
     { resourceId: 'ale', rate: 0.1 },
+    // Building materials for maintenance, construction, infrastructure
+    { resourceId: 'wood', rate: 0.15 },
+    { resourceId: 'stone', rate: 0.12 },
+    { resourceId: 'lumber', rate: 0.1 },
+    { resourceId: 'iron_ingot', rate: 0.05 },
   ],
   town: [
     { resourceId: 'tools', rate: 0.05 },
     { resourceId: 'ale', rate: 0.05 },
+    // Building materials for repairs and expansion
+    { resourceId: 'wood', rate: 0.1 },
+    { resourceId: 'stone', rate: 0.08 },
+    { resourceId: 'lumber', rate: 0.05 },
   ],
   castle: [
     { resourceId: 'weapons', rate: 0.03 },
     { resourceId: 'armor', rate: 0.02 },
     { resourceId: 'ale', rate: 0.05 },
+    // Fortifications need constant maintenance
+    { resourceId: 'stone', rate: 0.1 },
+    { resourceId: 'wood', rate: 0.05 },
+    { resourceId: 'iron_ingot', rate: 0.03 },
+  ],
+  port: [
+    // Docks and ships need maintenance
+    { resourceId: 'wood', rate: 0.08 },
+    { resourceId: 'lumber', rate: 0.06 },
+    { resourceId: 'tools', rate: 0.03 },
+  ],
+  village: [
+    // Basic maintenance
+    { resourceId: 'wood', rate: 0.04 },
+  ],
+  mine: [
+    // Mine shafts need support structures
+    { resourceId: 'wood', rate: 0.06 },
+    { resourceId: 'lumber', rate: 0.04 },
+    { resourceId: 'tools', rate: 0.05 },
+  ],
+  lumber_camp: [
+    // Logging equipment
+    { resourceId: 'tools', rate: 0.03 },
   ],
 };
 
@@ -288,15 +321,46 @@ function tickConsumption(loc: Location, world: World): void {
 
   // Consume non-food goods (tools, ale, weapons for castles, etc.)
   const goodsNeeds = GOODS_CONSUMPTION[loc.type];
+  const buildingMaterials = ['wood', 'stone', 'lumber', 'iron_ingot'];
+  let buildingMaterialsNeeded = 0;
+  let buildingMaterialsConsumed = 0;
+  
   if (goodsNeeds) {
     for (const need of goodsNeeds) {
+      // Track building materials separately
+      const isBuildingMaterial = buildingMaterials.includes(need.resourceId);
+      if (isBuildingMaterial) {
+        buildingMaterialsNeeded += need.rate;
+      }
+      
+      let consumed = false;
       for (let i = loc.storage.length - 1; i >= 0; i--) {
         if (loc.storage[i].resourceId === need.resourceId && loc.storage[i].quantity > 1) {
           loc.storage[i].quantity -= need.rate;
           if (loc.storage[i].quantity <= 0) loc.storage.splice(i, 1);
+          consumed = true;
+          if (isBuildingMaterial) {
+            buildingMaterialsConsumed += need.rate;
+          }
           break;
         }
       }
+    }
+  }
+  
+  // Durability management based on building materials
+  if (buildingMaterialsNeeded > 0) {
+    const materialSatisfaction = buildingMaterialsConsumed / buildingMaterialsNeeded;
+    
+    if (materialSatisfaction >= 0.8) {
+      // Good supply of materials: repair durability slowly
+      loc.durability = Math.min(100, loc.durability + 0.5);
+    } else if (materialSatisfaction < 0.3) {
+      // Severe shortage: lose durability faster
+      loc.durability = Math.max(50, loc.durability - 1.5);
+    } else {
+      // Partial shortage: lose durability slowly
+      loc.durability = Math.max(50, loc.durability - 0.5);
     }
   }
 

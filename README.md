@@ -11,6 +11,33 @@ npm run dev
 
 Open `http://localhost:3000` in your browser.
 
+## Combat
+
+When you encounter hostile creatures or hunt wild animals, combat is resolved in rounds:
+
+- **Animated Combat**: Both the party and enemy animate side-to-side during battle
+- **Duration**: Animation lasts ~400ms per combat round (300ms for hunting)
+- **Visual Feedback**: Characters oscillate back and forth, clashing in battle
+- **Automatic Cleanup**: Defeated enemies disappear after the animation completes
+
+Combat can be initiated by:
+- Moving onto a hostile creature (bandits, dragons, hostile wolves/bears)
+- Being attacked by a hostile creature that moves onto your tile
+- Pressing **H** to hunt game animals (deer, sheep, boar, wolf, bear)
+
+## Trading & Inventory
+
+When you press **I**, you'll open the inventory/trading screen:
+
+- **Outside markets**: View your inventory items with icons, quantities, and quality percentages
+- **At marketplaces**: Two tabs appear:
+  - **INVENTORY tab**: Your items with "SELL" buttons showing sale value
+  - **MARKET tab**: Available goods with "BUY" buttons showing purchase price
+- Click **SELL** buttons to sell individual items for gold
+- Click **BUY** buttons to purchase goods (1 unit at a time)
+- Items are color-coded: blue BUY buttons gray out if you can't afford them
+- Sold items enter the settlement's economy and can be used or traded
+
 ## Controls
 
 | Key               | Action                                             |
@@ -20,10 +47,8 @@ Open `http://localhost:3000` in your browser.
 | **Left-click**    | Select tile for info                               |
 | **Enter / Space** | End turn (advance world simulation)                |
 | **R**             | Rest (heal at settlements, camp in wilderness)     |
-| **H**             | Hunt wild game (deer, sheep, boar)                 |
-| **F**             | Buy food at a settlement                           |
-| **I**             | Toggle inventory panel                             |
-| **V**             | Sell inventory at marketplace                      |
+| **H**             | Hunt wild animals (deer, sheep, boar, wolf, bear)  |
+| **I**             | Open inventory/trading screen                      |
 | **B**             | Board/disembark boat at pier                       |
 | **C**             | Center camera on party                             |
 | **+/-**           | Zoom in/out                                        |

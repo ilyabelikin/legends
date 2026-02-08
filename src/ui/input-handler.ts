@@ -70,6 +70,25 @@ export class InputHandler {
       return;
     }
 
+    // Toggle inventory panel (always allowed)
+    if (e.key === 'i' || e.key === 'I') {
+      if (this.hud) {
+        this.hud.toggleInventory();
+      }
+      return;
+    }
+
+    // Close inventory with Escape
+    if (e.key === 'Escape' && this.hud?.isInventoryOpen()) {
+      this.hud.toggleInventory();
+      return;
+    }
+
+    // Block all other input when inventory is open
+    if (this.hud?.isInventoryOpen()) {
+      return;
+    }
+
     switch (e.key) {
       // End turn
       case 'Enter': case ' ':
@@ -93,29 +112,10 @@ export class InputHandler {
         this.engine.rest();
         break;
 
-      // Buy food — preview first, confirm if expensive
-      case 'f': case 'F':
-        this.engine.cancelMovement();
-        this.tryBuyFood();
-        break;
-
       // Hunt wild game
       case 'h': case 'H':
         this.engine.cancelMovement();
         this.engine.hunt();
-        break;
-
-      // Sell inventory at marketplace
-      case 'v': case 'V':
-        this.engine.cancelMovement();
-        this.engine.sellInventory();
-        break;
-
-      // Toggle inventory panel
-      case 'i': case 'I':
-        if (this.hud) {
-          this.hud.toggleInventory();
-        }
         break;
 
       // Embark / disembark at pier
@@ -181,6 +181,15 @@ export class InputHandler {
 
     const state = this.engine.state;
     if (!state) return;
+
+    // Let inventory handle clicks when open
+    if (this.hud?.isInventoryOpen()) {
+      if (e.button === 0 && this.hud?.handleInventoryClick(e.clientX, e.clientY)) {
+        return;
+      }
+      // Block other clicks when inventory is open
+      return;
+    }
 
     // Let the HUD handle clicks on log entries first
     if (e.button === 0 && this.hud?.handleClick(e.clientX, e.clientY, state)) {
@@ -275,35 +284,15 @@ export class InputHandler {
     return { x: fx, y: fy };
   }
 
-  // ── Buy Food with Price Alert ──────────────────────────
-
-  private tryBuyFood(): void {
-    const preview = this.engine.previewBuyFood();
-    if (!preview) {
-      this.engine.buyFood(); // will log the appropriate error
-      return;
-    }
-
-    if (preview.isExpensive) {
-      const stock = (Math.round(preview.stock * 10) / 10).toFixed(1);
-      const ok = confirm(
-        `⚠ Price is high!\n\n` +
-        `${preview.foodId} costs ${preview.price}g (only ${stock} left in ${preview.locName}).\n\n` +
-        `Buy anyway?`
-      );
-      if (!ok) {
-        this.engine.addLog(`Decided not to buy ${preview.foodId} at ${preview.price}g.`, 'system');
-        return;
-      }
-    }
-
-    this.engine.buyFood();
-  }
-
   // ── Continuous Camera Pan (called every frame) ────────
 
   /** Smooth WASD / Arrow camera panning */
   update(): void {
+    // Block camera panning when inventory is open
+    if (this.hud?.isInventoryOpen()) {
+      return;
+    }
+
     const speed = 20;
 
     let dx = 0;
