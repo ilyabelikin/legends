@@ -33,6 +33,14 @@ interface BuyButtonArea {
   storageIndex: number;
 }
 
+/** The clickable end turn button */
+interface TurnButtonArea {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 /**
  * Heads-Up Display — renders UI overlays on the game canvas.
  * Includes HUD bar, event log, tile info panel, and status displays.
@@ -61,6 +69,8 @@ export class HUD {
   private buyButtonAreas: BuyButtonArea[] = [];
   /** Current inventory tab: 'inventory' or 'market' */
   private inventoryTab: 'inventory' | 'market' = 'inventory';
+  /** Clickable end turn button area */
+  private turnButtonArea: TurnButtonArea | null = null;
 
   constructor(ctx: CanvasRenderingContext2D, engine: GameEngine) {
     this.ctx = ctx;
@@ -83,6 +93,18 @@ export class HUD {
     } else if (!wasOpen && !tab) {
       // Default to inventory tab when opening without specifying
       this.inventoryTab = 'inventory';
+    }
+  }
+
+  /** Open inventory to a specific tab, or close if already on that tab */
+  openInventoryTab(tab: 'inventory' | 'market'): void {
+    if (this.showInventory && this.inventoryTab === tab) {
+      // Already open on this tab, close it
+      this.showInventory = false;
+    } else {
+      // Either closed, or open on different tab - switch to this tab
+      this.showInventory = true;
+      this.inventoryTab = tab;
     }
   }
 
@@ -149,6 +171,7 @@ export class HUD {
     this.height = screenHeight;
 
     this.renderTopBar(state);
+    this.renderEndTurnButton(state);
     this.renderEventLog(state);
     this.renderBottomBar(state);
     this.renderTileInfo(state);
@@ -163,6 +186,16 @@ export class HUD {
    * Returns true if the click hit a log entry (consumed).
    */
   handleClick(screenX: number, screenY: number, state: GameState): boolean {
+    // Check turn button first
+    if (this.turnButtonArea) {
+      const btn = this.turnButtonArea;
+      if (screenX >= btn.x && screenX <= btn.x + btn.w &&
+          screenY >= btn.y && screenY <= btn.y + btn.h) {
+        this.engine.endTurn();
+        return true;
+      }
+    }
+
     for (const area of this.logHitAreas) {
       if (
         screenX >= area.x && screenX <= area.x + area.w &&
@@ -230,6 +263,60 @@ export class HUD {
     const popCount = Array.from(state.world.characters.values()).filter(c => c.isAlive).length;
     const locCount = Array.from(state.world.locations.values()).filter(l => !l.isDestroyed).length;
     ctx.fillText(`Pop: ${popCount} | Settlements: ${locCount}`, 570, 20);
+  }
+
+  // ── End Turn Button ─────────────────────────────────────
+
+  private renderEndTurnButton(state: GameState): void {
+    const ctx = this.ctx;
+    const buttonWidth = 140;
+    const buttonHeight = 70;
+    const buttonX = this.width - buttonWidth - 12;
+    const barHeight = 24; // bottom bar height (updated to match new smaller bar)
+    const buttonY = this.height - barHeight - buttonHeight - 8; // 8px padding above bottom bar
+
+    const noAP = state.party.actionPoints === 0;
+    
+    // Blinking effect when no action points
+    let opacity = 1.0;
+    if (noAP) {
+      const blinkSpeed = 3; // blinks per second
+      opacity = 0.7 + 0.3 * Math.sin(Date.now() * blinkSpeed * Math.PI / 1000);
+    }
+
+    // Button background (always green, but blinks when no AP)
+    ctx.globalAlpha = opacity;
+    ctx.fillStyle = 'rgba(80, 140, 80, 0.9)';
+    ctx.fillRect(buttonX, buttonY, buttonWidth, buttonHeight);
+    ctx.strokeStyle = '#60b060';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(buttonX, buttonY, buttonWidth, buttonHeight);
+    ctx.globalAlpha = 1.0;
+
+    // Button text
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 14px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('END TURN', buttonX + buttonWidth / 2, buttonY + 22);
+    
+    // Turn number
+    ctx.font = '10px monospace';
+    ctx.fillStyle = '#b0a090';
+    ctx.fillText(`Turn ${state.turn}`, buttonX + buttonWidth / 2, buttonY + 38);
+    
+    // Action points
+    ctx.font = 'bold 12px monospace';
+    ctx.fillStyle = PALETTE.uiHighlight;
+    const apText = `AP: ${state.party.actionPoints}/${state.party.maxActionPoints}`;
+    ctx.fillText(apText, buttonX + buttonWidth / 2, buttonY + 56);
+
+    // Store click area
+    this.turnButtonArea = {
+      x: buttonX,
+      y: buttonY,
+      w: buttonWidth,
+      h: buttonHeight
+    };
   }
 
   // ── Event Log ───────────────────────────────────────────
@@ -360,7 +447,7 @@ export class HUD {
 
   private renderBottomBar(state: GameState): void {
     const ctx = this.ctx;
-    const barHeight = 40;
+    const barHeight = 24;
     const barY = this.height - barHeight;
 
     ctx.fillStyle = 'rgba(10,10,20,0.85)';
@@ -372,7 +459,10 @@ export class HUD {
     ctx.textAlign = 'center';
 
     // Build contextual action hints
-    const hints = ['WASD: Pan', 'Right-click: Move', 'SPACE: End Turn', 'R: Rest', 'I: Inventory', 'M: Market'];
+    const hints = ['WASD: Pan', 'Right-click: Move', 'SPACE: End Turn', 'R: Rest', 'I: Inventory'];
+    if (this.engine.isAtMarket()) {
+      hints.push('M: Market');
+    }
     if (this.engine.canHunt()) {
       hints.push('H: Hunt');
     }
@@ -386,38 +476,6 @@ export class HUD {
 
     ctx.fillStyle = '#8a8070';
     ctx.fillText(hints.join(' | '), this.width / 2, barY + 15);
-
-    ctx.fillStyle = PALETTE.uiHighlight;
-    ctx.textAlign = 'left';
-    const apText = `Actions: ${state.party.actionPoints}/${state.party.maxActionPoints}`;
-    console.log(`[HUD] Rendering: ${apText}, Turn: ${state.turn}`);
-    ctx.fillText(apText, 12, barY + 30);
-
-    ctx.fillText(`Gold: ${state.party.gold}`, 200, barY + 30);
-
-    const leader = state.party.members[0];
-    if (leader) {
-      const pct = leader.health / leader.maxHealth;
-      ctx.fillStyle = pct > 0.6 ? PALETTE.uiSafe : pct > 0.3 ? PALETTE.uiHighlight : PALETTE.uiDanger;
-      ctx.fillText(`HP: ${Math.round(leader.health)}/${leader.maxHealth}`, 320, barY + 30);
-    }
-
-    // Show inventory count and hint
-    ctx.fillStyle = PALETTE.uiHighlight;
-    const invText = state.party.inventory.length === 0 
-      ? 'Inventory: empty' 
-      : `Inventory: ${state.party.inventory.length} items`;
-    ctx.fillText(invText, 450, barY + 30);
-
-    const tile = state.world.tiles[state.party.position.y]?.[state.party.position.x];
-    if (tile?.locationId) {
-      const loc = state.world.locations.get(tile.locationId);
-      if (loc && !loc.isDestroyed) {
-        ctx.fillStyle = PALETTE.uiHighlight;
-        ctx.textAlign = 'right';
-        ctx.fillText(`At: ${loc.name} (${loc.type})`, this.width - 12, barY + 30);
-      }
-    }
   }
 
   // ── Tile Info Panel ─────────────────────────────────────

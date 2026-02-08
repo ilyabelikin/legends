@@ -86,8 +86,8 @@ function createBuildingSprite(
       drawSmallHouse(ctx, 24, 36);
   }
 
-  // Draw country flag if applicable
-  if (countryColor && ['town', 'city', 'castle', 'port'].includes(type)) {
+  // Draw country flag if applicable (all settlements except farms, mines, lumber camps)
+  if (countryColor && ['town', 'city', 'castle', 'port', 'village', 'hamlet', 'homestead', 'fishing_village'].includes(type)) {
     drawFlag(ctx, 10, 8, countryColor);
   }
 

@@ -19,6 +19,7 @@ export class Renderer {
   private animationTime = 0;
   private minimapCanvas: OffscreenCanvas | null = null;
   private minimapDirty = true;
+  private currentState: GameState | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -44,6 +45,7 @@ export class Renderer {
 
   /** Main render frame */
   render(state: GameState, deltaTime: number): void {
+    this.currentState = state; // Store for helper methods
     this.animationTime += deltaTime;
     this.camera.update();
 
@@ -606,10 +608,56 @@ export class Renderer {
       ctx.translate(sx, sy - elevOffset - 8); // center of sprite
       ctx.rotate(rotation);
       ctx.drawImage(sprite, -8, -8);
+      
+      // Draw country-colored helmet for guards/armies
+      if ((creature.type === 'guard' || creature.type === 'army') && creature.countryId) {
+        const country = this.getCountry(creature.countryId);
+        if (country) {
+          this.drawColoredHelmet(ctx, 0, 0, country.color, creature.type);
+        }
+      }
+      
       ctx.restore();
     } else {
       ctx.drawImage(sprite, sx - 8, sy - elevOffset - 16);
+      
+      // Draw country-colored helmet for guards/armies
+      if ((creature.type === 'guard' || creature.type === 'army') && creature.countryId) {
+        const country = this.getCountry(creature.countryId);
+        if (country) {
+          this.drawColoredHelmet(ctx, sx, sy - elevOffset - 16, country.color, creature.type);
+        }
+      }
     }
+  }
+  
+  /** Draw a colored helmet overlay for military units */
+  private drawColoredHelmet(ctx: CanvasRenderingContext2D, sx: number, sy: number, color: string, type: 'guard' | 'army'): void {
+    if (type === 'guard') {
+      // Guard helmet (single unit)
+      ctx.fillStyle = color;
+      ctx.fillRect(sx - 2 + 8, sy + 2, 5, 2);
+      ctx.fillRect(sx - 1 + 8, sy + 1, 3, 1);
+    } else if (type === 'army') {
+      // Army helmets (multiple units)
+      for (let i = -1; i <= 1; i++) {
+        const ox = i * 3;
+        const oy = Math.abs(i);
+        ctx.fillStyle = color;
+        ctx.fillRect(sx + ox - 1 + 8, sy + 7 + oy, 3, 2);
+      }
+      // Army banner flag
+      ctx.fillStyle = color;
+      ctx.fillRect(sx - 1 + 8, sy + 1, 4, 3);
+    }
+  }
+  
+  /** Helper to get country from world */
+  private getCountry(countryId: string) {
+    // Access through the current state that's being rendered
+    const state = this.currentState;
+    if (!state) return null;
+    return state.world.countries.get(countryId);
   }
 
   /** Render the player party */

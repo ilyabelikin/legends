@@ -4,6 +4,7 @@ import type { World } from '../types/world';
 import type { Location } from '../types/location';
 import { SeededRandom } from '../utils/random';
 import { euclideanDist, manhattanDist } from '../utils/math';
+import { unloadTraderGoods, loadTraderGoods } from '../economy/trade-engine';
 
 /**
  * AI decision weights — highly configurable.
@@ -702,6 +703,18 @@ function decideTraderAction(
 
     // Check if we've reached the end of the path
     if (nextIndex < 0 || nextIndex >= creature.path.length) {
+      // Reached destination - unload and reload goods
+      const currentLoc = world.locations.get(creature.homeLocationId!);
+      const nextLoc = world.locations.get(creature.targetLocationId!);
+      
+      if (currentLoc && nextLoc) {
+        // Unload goods at current location
+        unloadTraderGoods(creature, currentLoc);
+        
+        // Load new goods for return journey
+        loadTraderGoods(creature, currentLoc, nextLoc, world);
+      }
+      
       // Reverse direction
       creature.pathDirection = (direction * -1) as 1 | -1;
       // Swap home and target
@@ -728,7 +741,15 @@ function decideTraderAction(
       const dist = manhattanDist(creature.position, target.position);
 
       if (dist <= 1) {
-        // Arrived — swap target and home (walk back)
+        // Arrived — unload and reload goods, then swap target and home
+        const currentLoc = world.locations.get(creature.homeLocationId!);
+        const nextLoc = world.locations.get(creature.targetLocationId!);
+        
+        if (currentLoc && nextLoc) {
+          unloadTraderGoods(creature, currentLoc);
+          loadTraderGoods(creature, currentLoc, nextLoc, world);
+        }
+        
         const oldTarget = creature.targetLocationId;
         creature.targetLocationId = creature.homeLocationId;
         creature.homeLocationId = oldTarget;

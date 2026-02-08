@@ -73,7 +73,7 @@ export class InputHandler {
     // Toggle inventory panel (always allowed)
     if (e.key === 'i' || e.key === 'I') {
       if (this.hud) {
-        this.hud.toggleInventory();
+        this.hud.openInventoryTab('inventory');
       }
       return;
     }
@@ -81,13 +81,7 @@ export class InputHandler {
     // Open inventory to Market tab (always allowed)
     if (e.key === 'm' || e.key === 'M') {
       if (this.hud) {
-        if (this.hud.isInventoryOpen()) {
-          // If already open, just switch to market tab or close
-          this.hud.toggleInventory('market');
-        } else {
-          // If closed, open to market tab
-          this.hud.toggleInventory('market');
-        }
+        this.hud.openInventoryTab('market');
       }
       return;
     }
@@ -307,7 +301,7 @@ export class InputHandler {
       return;
     }
 
-    const speed = 20;
+    const speed = 40;
 
     let dx = 0;
     let dy = 0;

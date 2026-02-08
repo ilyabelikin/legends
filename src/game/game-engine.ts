@@ -427,10 +427,10 @@ export class GameEngine {
     console.log(`[endTurn] After advance: AP = ${this.state.party.actionPoints}`);
   }
 
-  /** Rest — costs 2 AP. Better healing at settlements. */
+  /** Rest — costs 1 AP. Better healing at settlements. */
   rest(): boolean {
     const { party, world } = this.state;
-    const restCost = 2;
+    const restCost = 1;
 
     if (party.actionPoints < restCost) {
       this.addLog('Not enough action points to rest.', 'system');
@@ -576,6 +576,15 @@ export class GameEngine {
     );
   }
 
+  /** Check whether the party is at a location with a market */
+  isAtMarket(): boolean {
+    const tile = this.state.world.tiles[this.state.party.position.y]?.[this.state.party.position.x];
+    if (!tile?.locationId) return false;
+    const loc = this.state.world.locations.get(tile.locationId);
+    if (!loc || loc.isDestroyed) return false;
+    return loc.buildings.some(b => b.isOperational && b.type === 'market');
+  }
+
   /** Check if party can hunt (standing on a wild animal) */
   canHunt(): boolean {
     const { party, world } = this.state;
@@ -673,6 +682,36 @@ export class GameEngine {
       
       // Remove creature after animation completes (handled in renderer)
     } else {
+      // Animal escaped - move it to a nearby tile
+      const directions = [
+        { dx: -1, dy: 0 }, { dx: 1, dy: 0 },
+        { dx: 0, dy: -1 }, { dx: 0, dy: 1 },
+        { dx: -1, dy: -1 }, { dx: -1, dy: 1 },
+        { dx: 1, dy: -1 }, { dx: 1, dy: 1 }
+      ];
+      
+      // Shuffle directions for randomness
+      const shuffled = directions.sort(() => Math.random() - 0.5);
+      
+      // Find first valid adjacent tile
+      for (const dir of shuffled) {
+        const newX = target.position.x + dir.dx;
+        const newY = target.position.y + dir.dy;
+        
+        // Check if in bounds
+        if (newX >= 0 && newX < world.width && newY >= 0 && newY < world.height) {
+          const tile = world.tiles[newY][newX];
+          // Check if tile is walkable (not water/deep water)
+          if (tile.type !== 'water' && tile.type !== 'deep_water') {
+            target.position.x = newX;
+            target.position.y = newY;
+            this.addLog(`Hunt failed - ${label} escaped to nearby cover!`, 'info');
+            return true;
+          }
+        }
+      }
+      
+      // If no valid tile found, just log escape
       this.addLog(`Hunt failed - ${label} escaped!`, 'info');
     }
 
@@ -1113,6 +1152,14 @@ export class GameEngine {
           const hostile = creature.isHostile ? ' (hostile)' : '';
           info.push(`Creature: ${label}${hostile}`);
           info.push(`  HP: ${Math.round(creature.health)}/${creature.maxHealth}`);
+          
+          // Show trader inventory
+          if (creature.type === 'trader' && creature.loot.length > 0) {
+            info.push(`  Carrying:`);
+            for (const item of creature.loot) {
+              info.push(`    ${item.resourceId}: ${formatQuantity(item.quantity)}`);
+            }
+          }
         }
       }
     }

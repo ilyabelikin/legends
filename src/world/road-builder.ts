@@ -116,6 +116,92 @@ export function buildRoads(
       tiles[pos.y][pos.x].roadLevel = Math.max(tiles[pos.y][pos.x].roadLevel, roadLevel);
     }
   }
+  
+  // ── 5. Post-process: merge parallel/adjacent roads to avoid grid patterns ──
+  mergeParallelRoads(tiles, width, height);
+}
+
+/**
+ * Merge or remove redundant parallel roads that are too close together.
+ * This prevents ugly grid patterns from forming.
+ */
+function mergeParallelRoads(tiles: Tile[][], width: number, height: number): void {
+  // Pass 1: Remove roads that create parallel segments within 1-2 tiles of each other
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      const tile = tiles[y][x];
+      if (tile.roadLevel === 0 || tile.roadLevel >= 3) continue; // Keep highways
+      
+      // Check if this road segment runs parallel to another nearby road
+      // Horizontal road check
+      const isHorizontal = (tiles[y][x - 1].roadLevel > 0 || tiles[y][x + 1].roadLevel > 0);
+      const isVertical = (tiles[y - 1][x].roadLevel > 0 || tiles[y + 1][x].roadLevel > 0);
+      
+      if (isHorizontal) {
+        // Check for parallel horizontal road 1-2 tiles above or below
+        for (let offset = 1; offset <= 2; offset++) {
+          if (y + offset < height) {
+            const parallelAbove = tiles[y + offset][x].roadLevel > 0 &&
+              (tiles[y + offset][x - 1]?.roadLevel > 0 || tiles[y + offset][x + 1]?.roadLevel > 0);
+            if (parallelAbove && tile.roadLevel <= tiles[y + offset][x].roadLevel) {
+              tile.roadLevel = 0; // Remove this road, keep the other
+              break;
+            }
+          }
+          if (y - offset >= 0) {
+            const parallelBelow = tiles[y - offset][x].roadLevel > 0 &&
+              (tiles[y - offset][x - 1]?.roadLevel > 0 || tiles[y - offset][x + 1]?.roadLevel > 0);
+            if (parallelBelow && tile.roadLevel < tiles[y - offset][x].roadLevel) {
+              tile.roadLevel = 0; // Remove this road, keep the higher level one
+              break;
+            }
+          }
+        }
+      }
+      
+      if (isVertical && tile.roadLevel > 0) {
+        // Check for parallel vertical road 1-2 tiles left or right
+        for (let offset = 1; offset <= 2; offset++) {
+          if (x + offset < width) {
+            const parallelRight = tiles[y][x + offset].roadLevel > 0 &&
+              (tiles[y - 1]?.[x + offset]?.roadLevel > 0 || tiles[y + 1]?.[x + offset]?.roadLevel > 0);
+            if (parallelRight && tile.roadLevel <= tiles[y][x + offset].roadLevel) {
+              tile.roadLevel = 0;
+              break;
+            }
+          }
+          if (x - offset >= 0) {
+            const parallelLeft = tiles[y][x - offset].roadLevel > 0 &&
+              (tiles[y - 1]?.[x - offset]?.roadLevel > 0 || tiles[y + 1]?.[x - offset]?.roadLevel > 0);
+            if (parallelLeft && tile.roadLevel < tiles[y][x - offset].roadLevel) {
+              tile.roadLevel = 0;
+              break;
+            }
+          }
+        }
+      }
+    }
+  }
+  
+  // Pass 2: Clean up orphaned road segments (single tiles with no continuation)
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      const tile = tiles[y][x];
+      if (tile.roadLevel === 0) continue;
+      
+      // Count road neighbors (orthogonal only)
+      const roadNeighbors = 
+        (tiles[y - 1][x].roadLevel > 0 ? 1 : 0) +
+        (tiles[y + 1][x].roadLevel > 0 ? 1 : 0) +
+        (tiles[y][x - 1].roadLevel > 0 ? 1 : 0) +
+        (tiles[y][x + 1].roadLevel > 0 ? 1 : 0);
+      
+      // Remove isolated road tiles or dead ends that seem unnecessary
+      if (roadNeighbors === 0) {
+        tile.roadLevel = 0;
+      }
+    }
+  }
 }
 
 /** Importance score — determines road priority and level */

@@ -133,7 +133,7 @@ function determineTransport(
 
 /**
  * Execute trade along existing routes.
- * Moves goods from surplus locations to deficit locations.
+ * Now mainly for routes without active physical traders (backup system).
  */
 export function executeTrades(world: World, turn: number, rng: SeededRandom): string[] {
   const logs: string[] = [];
@@ -141,6 +141,19 @@ export function executeTrades(world: World, turn: number, rng: SeededRandom): st
   for (const route of world.tradeRoutes.values()) {
     if (!route.isActive) continue;
 
+    // Check if this route has an active trader - if so, skip (they handle physical trade)
+    const hasActiveTrader = Array.from(world.creatures.values()).some(
+      c => c.type === 'trader' && c.health > 0 &&
+        ((c.homeLocationId === route.fromLocationId && c.targetLocationId === route.toLocationId) ||
+         (c.homeLocationId === route.toLocationId && c.targetLocationId === route.fromLocationId))
+    );
+    
+    if (hasActiveTrader) {
+      route.lastUsedTurn = turn;
+      continue; // Trader is physically handling this route
+    }
+
+    // Fallback: instant trade for routes without traders
     const from = world.locations.get(route.fromLocationId);
     const to = world.locations.get(route.toLocationId);
     if (!from || !to || from.isDestroyed || to.isDestroyed) {
@@ -155,7 +168,7 @@ export function executeTrades(world: World, turn: number, rng: SeededRandom): st
       continue;
     }
 
-    // Move surplus goods
+    // Move surplus goods (instant teleport for routes without physical traders)
     const capacity = TRANSPORT_CAPACITY[route.transportType];
     let weightUsed = 0;
 
@@ -204,6 +217,57 @@ export function executeTrades(world: World, turn: number, rng: SeededRandom): st
   }
 
   return logs;
+}
+
+/** Load goods onto a trader from a settlement based on trade needs */
+export function loadTraderGoods(trader: Creature, fromLoc: Location, toLoc: Location, world: World): void {
+  trader.loot = []; // Clear existing cargo
+  
+  const capacity = 50; // Base trader carrying capacity
+  let weightUsed = 0;
+
+  for (let i = fromLoc.storage.length - 1; i >= 0 && weightUsed < capacity; i--) {
+    const stack = fromLoc.storage[i];
+    const def = RESOURCE_DEFINITIONS[stack.resourceId];
+    if (!def) continue;
+
+    // Only trade if destination needs it
+    const destStock = toLoc.storage
+      .filter(s => s.resourceId === stack.resourceId)
+      .reduce((sum, s) => sum + s.quantity, 0);
+    if (destStock > def.stackSize * 0.5) continue;
+
+    // Only trade surplus
+    if (stack.quantity <= def.stackSize * 0.3) continue;
+
+    const tradeAmount = Math.min(
+      Math.floor(stack.quantity * 0.3),
+      Math.floor((capacity - weightUsed) / def.weight),
+    );
+
+    if (tradeAmount <= 0) continue;
+
+    // Remove from settlement and add to trader
+    stack.quantity -= tradeAmount;
+    if (stack.quantity <= 0) fromLoc.storage.splice(i, 1);
+
+    trader.loot.push({
+      resourceId: stack.resourceId,
+      quantity: tradeAmount,
+      quality: stack.quality,
+      age: 0
+    });
+    
+    weightUsed += tradeAmount * def.weight;
+  }
+}
+
+/** Unload goods from a trader to a settlement */
+export function unloadTraderGoods(trader: Creature, toLoc: Location): void {
+  for (const cargo of trader.loot) {
+    addToStorage(toLoc, cargo.resourceId, cargo.quantity, cargo.quality);
+  }
+  trader.loot = []; // Clear cargo after delivery
 }
 
 /** Calculate danger level for trade routes based on nearby threats */
@@ -278,6 +342,12 @@ export function spawnTraders(world: World, rng: SeededRandom): void {
       pathProgress: 0,
       pathDirection: 1, // 1 = forward, -1 = backward
     };
+
+    // Load initial goods from origin
+    const to = world.locations.get(route.toLocationId);
+    if (to) {
+      loadTraderGoods(trader, from, to, world);
+    }
 
     world.creatures.set(id, trader);
     traderCount++;

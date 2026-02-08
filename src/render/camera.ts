@@ -18,7 +18,7 @@ export class Camera {
 
   private minZoom = 0.25;
   private maxZoom = 3.0;
-  private smoothing = 0.15;
+  private smoothing = 0.35;
 
   constructor(screenWidth: number, screenHeight: number) {
     this.x = 0;

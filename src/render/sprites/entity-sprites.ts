@@ -291,10 +291,7 @@ function drawGuard(ctx: OffscreenCanvasRenderingContext2D, x: number, y: number)
   // Head
   ctx.fillStyle = PALETTE.skinLight;
   ctx.fillRect(x - 2, y - 12, 5, 3);
-  // Helmet
-  ctx.fillStyle = '#a0a0b0';
-  ctx.fillRect(x - 2, y - 14, 5, 2);
-  ctx.fillRect(x - 1, y - 15, 3, 1);
+  // Helmet removed - will be drawn by renderer with country color
   // Spear
   ctx.fillStyle = '#7a5a30';
   ctx.fillRect(x + 4, y - 16, 1, 12);
@@ -319,18 +316,17 @@ function drawArmy(ctx: OffscreenCanvasRenderingContext2D, x: number, y: number):
     // Body
     ctx.fillStyle = '#707088';
     ctx.fillRect(x + ox - 2, y - 7 + oy, 5, 4);
-    // Head + helmet
-    ctx.fillStyle = '#a0a0b0';
+    // Head (no helmet - will be drawn by renderer with country color)
+    ctx.fillStyle = PALETTE.skinLight;
     ctx.fillRect(x + ox - 1, y - 9 + oy, 3, 2);
     // Spear
     ctx.fillStyle = '#7a5a30';
     ctx.fillRect(x + ox + 2, y - 12 + oy, 1, 8);
   }
-  // Banner in the middle
-  ctx.fillStyle = '#c44444'; // default red, will be drawn over by renderer with country color
-  ctx.fillRect(x - 1, y - 14, 4, 3);
+  // Banner pole
   ctx.fillStyle = '#7a5a30';
   ctx.fillRect(x - 2, y - 15, 1, 12);
+  // Banner flag (removed - will be drawn by renderer with country color)
 }
 
 /** Get road sprite element */
