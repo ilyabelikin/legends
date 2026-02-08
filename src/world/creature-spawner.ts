@@ -83,7 +83,7 @@ export function spawnCreatures(
       type: creatureType,
       name: creatureType === 'dragon' ? generateDragonName(rng) : null,
       position: { x, y },
-      health: def.baseHealth * packSize * (0.8 + rng.next() * 0.4),
+      health: def.baseHealth * packSize,
       maxHealth: def.baseHealth * packSize,
       attack: def.baseAttack * Math.sqrt(packSize),
       defense: def.baseDefense * Math.sqrt(packSize),
@@ -95,6 +95,9 @@ export function spawnCreatures(
       loot: [],
       age: 0,
       lastActionTurn: 0,
+      countryId: null,
+      targetLocationId: null,
+      homeLocationId: null,
     };
 
     // Generate loot
@@ -133,7 +136,7 @@ export function spawnCreatures(
         type: 'dragon',
         name: generateDragonName(rng),
         position: { x, y },
-        health: dragonDef.baseHealth * (0.9 + rng.next() * 0.3),
+        health: dragonDef.baseHealth,
         maxHealth: dragonDef.baseHealth,
         attack: dragonDef.baseAttack,
         defense: dragonDef.baseDefense,
@@ -147,6 +150,9 @@ export function spawnCreatures(
         ],
         age: 0,
         lastActionTurn: 0,
+        countryId: null,
+        targetLocationId: null,
+        homeLocationId: null,
       };
       creatures.set(id, dragon);
       spawnPoints.push({ x, y });

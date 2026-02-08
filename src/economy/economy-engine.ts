@@ -192,12 +192,12 @@ export function addToStorage(
 
   if (existing) {
     const canAdd = Math.min(actualQuantity, def.stackSize - existing.quantity);
-    existing.quantity += canAdd;
-    existing.quality = (existing.quality + quality) / 2; // average quality
+    existing.quantity = Math.round(existing.quantity + canAdd);
+    existing.quality = Math.round(((existing.quality + quality) / 2) * 100) / 100;
     if (canAdd < actualQuantity) {
       loc.storage.push({
         resourceId,
-        quantity: actualQuantity - canAdd,
+        quantity: Math.round(actualQuantity - canAdd),
         quality,
         age: 0,
       });
@@ -212,16 +212,53 @@ export function addToStorage(
   }
 }
 
-/** Consume food for population */
+/**
+ * Consumption rates by location type.
+ * Larger settlements consume more and can't produce all their own food —
+ * they depend on trade from villages, farms, and fishing villages.
+ */
+const CONSUMPTION_RATE: Partial<Record<string, number>> = {
+  city: 0.5,        // cities eat a LOT — need constant supply
+  town: 0.4,        // towns eat heavily
+  castle: 0.4,      // garrisons need feeding
+  port: 0.35,
+  village: 0.3,
+  hamlet: 0.25,
+  homestead: 0.2,
+  farm: 0.15,       // farms mostly feed themselves
+  fishing_village: 0.2,
+  mine: 0.3,        // miners eat well
+  lumber_camp: 0.25,
+};
+
+/** Additional non-food goods consumed by larger settlements per turn */
+const GOODS_CONSUMPTION: Partial<Record<string, { resourceId: string; rate: number }[]>> = {
+  city: [
+    { resourceId: 'tools', rate: 0.1 },
+    { resourceId: 'fabric', rate: 0.05 },
+    { resourceId: 'ale', rate: 0.1 },
+  ],
+  town: [
+    { resourceId: 'tools', rate: 0.05 },
+    { resourceId: 'ale', rate: 0.05 },
+  ],
+  castle: [
+    { resourceId: 'weapons', rate: 0.03 },
+    { resourceId: 'armor', rate: 0.02 },
+    { resourceId: 'ale', rate: 0.05 },
+  ],
+};
+
+/** Consume food and goods. Returns food satisfaction 0-1. */
 function tickConsumption(loc: Location, world: World): void {
   const popCount = loc.residentIds.length;
   if (popCount === 0) return;
 
-  // Each person needs ~0.3 food units per turn
-  const foodNeeded = popCount * 0.3;
+  const rate = CONSUMPTION_RATE[loc.type] ?? 0.3;
+  const foodNeeded = popCount * rate;
   let foodConsumed = 0;
 
-  // Try to consume food — prefer processed food, preserve raw stock for trade
+  // Consume food — prefer processed, keep small reserve for trade
   const foodPriority = ['bread', 'meat', 'fish', 'berries', 'wheat', 'exotic_fruit'];
 
   for (const foodId of foodPriority) {
@@ -230,8 +267,7 @@ function tickConsumption(loc: Location, world: World): void {
     for (let i = loc.storage.length - 1; i >= 0; i--) {
       if (foodConsumed >= foodNeeded) break;
       if (loc.storage[i].resourceId === foodId) {
-        // Reserve at least 3 units of each food type for trade/visitors
-        const reserve = 3;
+        const reserve = 2;
         const available = Math.max(0, loc.storage[i].quantity - reserve);
         if (available <= 0) continue;
 
@@ -245,11 +281,40 @@ function tickConsumption(loc: Location, world: World): void {
     }
   }
 
-  // Update happiness based on food satisfaction
-  const satisfaction = Math.min(1, foodConsumed / foodNeeded);
+  // Consume non-food goods (tools, ale, weapons for castles, etc.)
+  const goodsNeeds = GOODS_CONSUMPTION[loc.type];
+  if (goodsNeeds) {
+    for (const need of goodsNeeds) {
+      for (let i = loc.storage.length - 1; i >= 0; i--) {
+        if (loc.storage[i].resourceId === need.resourceId && loc.storage[i].quantity > 1) {
+          loc.storage[i].quantity -= need.rate;
+          if (loc.storage[i].quantity <= 0) loc.storage.splice(i, 1);
+          break;
+        }
+      }
+    }
+  }
+
+  // Food satisfaction drives happiness AND starvation
+  const satisfaction = foodNeeded > 0 ? Math.min(1, foodConsumed / foodNeeded) : 1;
   loc.happiness = Math.max(0, Math.min(100,
-    loc.happiness + (satisfaction > 0.8 ? 1 : satisfaction > 0.5 ? 0 : -2)
+    loc.happiness + (satisfaction > 0.8 ? 1 : satisfaction > 0.5 ? 0 : -3)
   ));
+
+  // Track starvation: if satisfaction is very low, people leave or die
+  if (satisfaction < 0.3 && popCount > 1) {
+    // Remove 1 resident (they leave to find food)
+    const leaverId = loc.residentIds.pop();
+    if (leaverId) {
+      const ch = world.characters.get(leaverId);
+      if (ch) {
+        ch.homeLocationId = null;
+        ch.jobType = 'unemployed';
+        ch.needs.food = 0;
+      }
+    }
+    loc.prosperity = Math.max(0, loc.prosperity - 2);
+  }
 
   // Update character food needs
   for (const charId of loc.residentIds) {
@@ -286,8 +351,9 @@ function tickResourceReplenishment(loc: Location, world: World): void {
       if (nx >= 0 && nx < world.width && ny >= 0 && ny < world.height) {
         const deposit = world.tiles[ny][nx].resourceDeposit;
         if (deposit && deposit.replenishRate > 0) {
-          deposit.amount = Math.min(deposit.maxAmount,
-            deposit.amount + deposit.replenishRate);
+          deposit.amount = Math.round(
+            Math.min(deposit.maxAmount, deposit.amount + deposit.replenishRate) * 10
+          ) / 10; // round to 1 decimal place
         }
       }
     }

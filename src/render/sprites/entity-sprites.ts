@@ -35,6 +35,9 @@ export function getCreatureSprite(type: CreatureType): OffscreenCanvas {
     case 'boar': drawBoar(ctx, 8, 16); break;
     case 'dragon': drawDragon(ctx, 8, 12); break;
     case 'bandit': drawBandit(ctx, 8, 16); break;
+    case 'guard': drawGuard(ctx, 8, 16); break;
+    case 'army': drawArmy(ctx, 8, 16); break;
+    case 'trader': drawTrader(ctx, 8, 16); break;
   }
 
   entityCache.set(key, canvas);
@@ -217,6 +220,87 @@ function drawBandit(ctx: OffscreenCanvasRenderingContext2D, x: number, y: number
   // Weapon
   ctx.fillStyle = '#a0a0a0';
   ctx.fillRect(x + 4, y - 10, 1, 6);
+}
+
+function drawTrader(ctx: OffscreenCanvasRenderingContext2D, x: number, y: number): void {
+  // Donkey/mule
+  ctx.fillStyle = '#8a7a6a';
+  ctx.fillRect(x - 5, y - 3, 7, 3);
+  ctx.fillRect(x - 6, y - 5, 3, 2); // head
+  ctx.fillStyle = '#6a5a4a';
+  ctx.fillRect(x - 4, y, 1, 2); // legs
+  ctx.fillRect(x, y, 1, 2);
+  // Pack/cargo on back
+  ctx.fillStyle = '#7a5a30';
+  ctx.fillRect(x - 4, y - 6, 6, 3);
+  ctx.fillStyle = '#8a6a40';
+  ctx.fillRect(x - 3, y - 7, 4, 1);
+  // Merchant walking beside
+  ctx.fillStyle = PALETTE.clothBrown;
+  ctx.fillRect(x + 3, y - 8, 5, 4);
+  ctx.fillStyle = PALETTE.skinLight;
+  ctx.fillRect(x + 4, y - 10, 3, 2);
+  ctx.fillStyle = PALETTE.hairBrown;
+  ctx.fillRect(x + 4, y - 11, 3, 1);
+  // Legs
+  ctx.fillStyle = PALETTE.clothBrown;
+  ctx.fillRect(x + 4, y - 4, 1, 3);
+  ctx.fillRect(x + 6, y - 4, 1, 3);
+}
+
+function drawGuard(ctx: OffscreenCanvasRenderingContext2D, x: number, y: number): void {
+  // Legs
+  ctx.fillStyle = '#3a3a4a';
+  ctx.fillRect(x - 2, y - 4, 2, 4);
+  ctx.fillRect(x + 1, y - 4, 2, 4);
+  // Body — chainmail
+  ctx.fillStyle = '#8888a0';
+  ctx.fillRect(x - 3, y - 9, 7, 5);
+  ctx.fillStyle = '#707088';
+  ctx.fillRect(x - 3, y - 9, 2, 5);
+  // Head
+  ctx.fillStyle = PALETTE.skinLight;
+  ctx.fillRect(x - 2, y - 12, 5, 3);
+  // Helmet
+  ctx.fillStyle = '#a0a0b0';
+  ctx.fillRect(x - 2, y - 14, 5, 2);
+  ctx.fillRect(x - 1, y - 15, 3, 1);
+  // Spear
+  ctx.fillStyle = '#7a5a30';
+  ctx.fillRect(x + 4, y - 16, 1, 12);
+  ctx.fillStyle = '#c0c0c0';
+  ctx.fillRect(x + 3, y - 17, 3, 2);
+  // Shield
+  ctx.fillStyle = '#4444a0';
+  ctx.fillRect(x - 4, y - 9, 2, 4);
+  ctx.fillStyle = '#333880';
+  ctx.fillRect(x - 4, y - 8, 2, 2);
+}
+
+function drawArmy(ctx: OffscreenCanvasRenderingContext2D, x: number, y: number): void {
+  // Multiple soldiers — 3 overlapping figures
+  for (let i = -1; i <= 1; i++) {
+    const ox = i * 3;
+    const oy = Math.abs(i);
+    // Legs
+    ctx.fillStyle = '#3a3a4a';
+    ctx.fillRect(x + ox - 1, y - 3 + oy, 1, 3);
+    ctx.fillRect(x + ox + 1, y - 3 + oy, 1, 3);
+    // Body
+    ctx.fillStyle = '#707088';
+    ctx.fillRect(x + ox - 2, y - 7 + oy, 5, 4);
+    // Head + helmet
+    ctx.fillStyle = '#a0a0b0';
+    ctx.fillRect(x + ox - 1, y - 9 + oy, 3, 2);
+    // Spear
+    ctx.fillStyle = '#7a5a30';
+    ctx.fillRect(x + ox + 2, y - 12 + oy, 1, 8);
+  }
+  // Banner in the middle
+  ctx.fillStyle = '#c44444'; // default red, will be drawn over by renderer with country color
+  ctx.fillRect(x - 1, y - 14, 4, 3);
+  ctx.fillStyle = '#7a5a30';
+  ctx.fillRect(x - 2, y - 15, 1, 12);
 }
 
 /** Get road sprite element */

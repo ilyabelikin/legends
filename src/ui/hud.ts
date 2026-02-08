@@ -273,6 +273,12 @@ export class HUD {
     if (this.engine.canBuyFood()) {
       hints.push('F: Buy Food');
     }
+    if (this.engine.canEmbark()) {
+      hints.push('B: Board Boat');
+    }
+    if (state.party.isSailing) {
+      hints.push('(Sailing)');
+    }
     hints.push('Scroll: Zoom', 'C: Center');
 
     ctx.fillStyle = '#8a8070';

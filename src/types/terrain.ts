@@ -40,7 +40,8 @@ export type TileFeatureType =
   | 'ruins'
   | 'dungeon_entrance'
   | 'oasis'
-  | 'hot_spring';
+  | 'hot_spring'
+  | 'pier';
 
 /** Natural resource deposit at a tile */
 export interface ResourceDeposit {

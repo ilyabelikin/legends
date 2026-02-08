@@ -3,10 +3,11 @@ import type { Character } from '../types/character';
 import type { Season, Weather } from '../types/season';
 import { getSeasonFromTurn, WEATHER_PROBABILITIES } from '../types/season';
 import { tickEconomy } from '../economy/economy-engine';
-import { executeTrades, establishTradeRoutes, updateRouteDanger } from '../economy/trade-engine';
+import { executeTrades, establishTradeRoutes, updateRouteDanger, spawnTraders } from '../economy/trade-engine';
 import { decideCharacterAction, decideCreatureAction, DEFAULT_AI_CONFIG } from '../ai/decision-engine';
 import { generateWorldEvents } from '../ai/world-events';
 import { checkDirectWitness } from './news-system';
+import { checkDestruction, regenDurability, spawnGuards, spawnArmies, creatureCombatTick, disbandPeacetimeArmies } from './military-system';
 import { SeededRandom } from '../utils/random';
 import { isWater } from '../world/terrain-generator';
 import { clearTerrainSpriteCache } from '../render/sprites/terrain-sprites';
@@ -45,6 +46,7 @@ export function advanceTurn(state: GameState): void {
   if (state.turn % 20 === 0) {
     establishTradeRoutes(state.world, rng.fork());
     updateRouteDanger(state.world);
+    spawnTraders(state.world, rng.fork());
   }
 
   // === 3. NPC decisions and actions ===
@@ -71,19 +73,57 @@ export function advanceTurn(state: GameState): void {
     state.worldEvents = state.worldEvents.filter(e => state.turn - e.turn < 80);
   }
 
-  // === 6. Update visibility ===
+  // === 6. Military: guards, armies, creature combat, destruction ===
+  if (state.turn % 10 === 0) {
+    spawnGuards(state.world, rng.fork());
+  }
+  if (state.turn % 5 === 0) {
+    const armyEvents = spawnArmies(state, rng.fork());
+    for (const evt of armyEvents) {
+      state.worldEvents.push(evt);
+      if (checkDirectWitness(state, evt)) {
+        state.knownEventIds.add(evt.id);
+        addLog(state, evt.title, severityToLogType(evt.severity), evt.locationId ?? undefined);
+      }
+    }
+  }
+
+  const combatEvents = creatureCombatTick(state, rng.fork());
+  for (const evt of combatEvents) {
+    evt.turn = state.turn;
+    state.worldEvents.push(evt);
+    if (checkDirectWitness(state, evt)) {
+      state.knownEventIds.add(evt.id);
+      addLog(state, evt.title, 'combat', evt.locationId ?? undefined);
+    }
+  }
+
+  regenDurability(state.world);
+  const destructionEvents = checkDestruction(state);
+  for (const evt of destructionEvents) {
+    state.activeEvents.push(evt);
+    state.worldEvents.push(evt);
+    if (checkDirectWitness(state, evt)) {
+      state.knownEventIds.add(evt.id);
+      addLog(state, evt.title, 'danger', evt.locationId ?? undefined);
+    }
+  }
+
+  disbandPeacetimeArmies(state.world);
+
+  // === 7. Update visibility ===
   updateVisibility(state);
 
-  // === 7. Age characters yearly ===
+  // === 8. Age characters yearly ===
   if (state.turn % 360 === 0) {
     ageCharacters(state.world);
   }
 
-  // === 8. Restore party action points ===
+  // === 9. Restore party action points ===
   state.party.maxActionPoints = 6;
   state.party.actionPoints = state.party.maxActionPoints;
 
-  // === 9. Prune old events ===
+  // === 10. Prune old events ===
   state.activeEvents = state.activeEvents.filter(e =>
     !e.isResolved && state.turn - e.turn < 50
   );

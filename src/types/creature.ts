@@ -8,7 +8,10 @@ export type CreatureType =
   | 'sheep'
   | 'boar'
   | 'dragon'
-  | 'bandit';
+  | 'bandit'
+  | 'guard'
+  | 'army'
+  | 'trader';
 
 /** Behavior patterns for creatures */
 export type CreatureBehavior =
@@ -18,7 +21,10 @@ export type CreatureBehavior =
   | 'fleeing'
   | 'migrating'
   | 'hunting'
-  | 'raiding';
+  | 'raiding'
+  | 'patrolling'
+  | 'marching'
+  | 'trading';
 
 /** A creature in the game world */
 export interface Creature {
@@ -38,6 +44,12 @@ export interface Creature {
   loot: ResourceStack[];
   age: number;               // turns alive
   lastActionTurn: number;
+  /** Country this creature belongs to (guards, armies) */
+  countryId: string | null;
+  /** Location this creature is targeting (armies marching to attack) */
+  targetLocationId: string | null;
+  /** Settlement that spawned this creature (guards) */
+  homeLocationId: string | null;
 }
 
 /** Static definition for a creature type */

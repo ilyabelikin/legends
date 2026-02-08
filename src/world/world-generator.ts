@@ -8,6 +8,7 @@ import { assignBiomes } from './biome-generator';
 import { placeResources } from './resource-placer';
 import { placeSettlements } from './settlement-placer';
 import { buildRoads } from './road-builder';
+import { placePiers } from './pier-placer';
 import { populateWorld } from '../entities/character-factory';
 import { spawnCreatures } from './creature-spawner';
 import { generatePolitics as generatePoliticsLayer } from './political-generator';
@@ -106,10 +107,11 @@ export function generateWorld(
   // Layer 7: Settlements
   const locations = placeSettlements(tiles, width, height, rng.fork());
 
-  onProgress?.('Building roads...', 0.65);
+  onProgress?.('Building roads and piers...', 0.65);
 
-  // Layer 8: Roads
+  // Layer 8: Roads and piers
   buildRoads(tiles, locations, width, height);
+  placePiers(tiles, locations, width, height);
 
   onProgress?.('Populating the world...', 0.75);
 

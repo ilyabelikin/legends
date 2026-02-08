@@ -71,15 +71,21 @@ export class Renderer {
       }
     }
 
-    // Pass 2: Roads + working sites (on top of ground, below trees)
+    // Pass 2: Roads + piers + working sites (on top of ground, below trees)
     for (let y = range.minY; y <= range.maxY; y++) {
       for (let x = range.minX; x <= range.maxX; x++) {
         const tile = world.tiles[y][x];
-        if (tile.explored && tile.roadLevel > 0) {
-          const sx = (x - y) * (TILE_WIDTH / 2);
-          const sy = (x + y) * (TILE_HEIGHT / 2);
-          const elevOffset = Math.floor(tile.elevation * 5) * ELEVATION_HEIGHT;
+        if (!tile.explored) continue;
+
+        const sx = (x - y) * (TILE_WIDTH / 2);
+        const sy = (x + y) * (TILE_HEIGHT / 2);
+        const elevOffset = Math.floor(tile.elevation * 5) * ELEVATION_HEIGHT;
+
+        if (tile.roadLevel > 0) {
           this.renderRoad(ctx, tile, sx, sy - elevOffset, world);
+        }
+        if (tile.features.some(f => f.type === 'pier')) {
+          this.renderPier(ctx, sx, sy - elevOffset);
         }
       }
     }
@@ -98,8 +104,18 @@ export class Renderer {
         const tile = world.tiles[y][x];
         if (tile.locationId && tile.explored) {
           const loc = world.locations.get(tile.locationId);
-          if (loc && !loc.isDestroyed) {
-            this.renderLocation(ctx, loc, world.countries.get(loc.countryId ?? '')?.color ?? null, tile.elevation);
+          if (loc) {
+            const countryColor = world.countries.get(loc.countryId ?? '')?.color ?? null;
+            this.renderLocation(ctx, loc, countryColor, tile.elevation);
+
+            // Burning overlay for low durability
+            if (!loc.isDestroyed && loc.durability < 30) {
+              this.renderBurning(ctx, tile, loc.durability);
+            }
+            // Smoke for destroyed settlements
+            if (loc.isDestroyed) {
+              this.renderSmoke(ctx, tile);
+            }
           }
         }
       }
@@ -118,7 +134,8 @@ export class Renderer {
 
     // Render player party
     this.renderParty(ctx, party.position.x, party.position.y,
-      world.tiles[party.position.y]?.[party.position.x]?.elevation ?? 0.3);
+      world.tiles[party.position.y]?.[party.position.x]?.elevation ?? 0.3,
+      party.isSailing);
 
     // Render selection highlight
     if (state.selectedTile) {
@@ -380,6 +397,74 @@ export class Renderer {
     ctx.fillRect(sx - 1, cy, 4, 1);
   }
 
+  /** Render fire overlay on a damaged settlement */
+  private renderBurning(ctx: CanvasRenderingContext2D, tile: Tile, durability: number): void {
+    const sx = (tile.x - tile.y) * (TILE_WIDTH / 2);
+    const sy = (tile.x + tile.y) * (TILE_HEIGHT / 2);
+    const elevOffset = Math.floor(tile.elevation * 5) * ELEVATION_HEIGHT;
+    const intensity = 1 - durability / 30; // 0 at 30 durability, 1 at 0
+
+    // Animated fire flicker using time
+    const t = this.animationTime * 4;
+    const flicker = Math.sin(t) * 0.3 + 0.7;
+
+    // Fire glow
+    ctx.fillStyle = `rgba(255,100,20,${(0.3 * intensity * flicker).toFixed(2)})`;
+    ctx.fillRect(sx - 10, sy - elevOffset - 20, 20, 12);
+
+    // Fire particles
+    for (let i = 0; i < 3; i++) {
+      const fx = sx - 6 + i * 6 + Math.sin(t + i * 2) * 2;
+      const fy = sy - elevOffset - 25 - i * 4 + Math.cos(t + i) * 2;
+      ctx.fillStyle = `rgba(255,200,40,${(0.5 * intensity * flicker).toFixed(2)})`;
+      ctx.fillRect(fx, fy, 3, 3);
+      ctx.fillStyle = `rgba(255,80,10,${(0.4 * intensity).toFixed(2)})`;
+      ctx.fillRect(fx + 1, fy + 2, 2, 2);
+    }
+  }
+
+  /** Render drifting smoke on ruins */
+  private renderSmoke(ctx: CanvasRenderingContext2D, tile: Tile): void {
+    const sx = (tile.x - tile.y) * (TILE_WIDTH / 2);
+    const sy = (tile.x + tile.y) * (TILE_HEIGHT / 2);
+    const elevOffset = Math.floor(tile.elevation * 5) * ELEVATION_HEIGHT;
+    const t = this.animationTime * 2;
+
+    for (let i = 0; i < 4; i++) {
+      const smokeX = sx - 8 + i * 5 + Math.sin(t + i * 1.5) * 3;
+      const smokeY = sy - elevOffset - 30 - (t * 2 + i * 8) % 20;
+      const alpha = Math.max(0, 0.25 - ((t + i * 3) % 5) * 0.05);
+      ctx.fillStyle = `rgba(80,70,60,${alpha.toFixed(2)})`;
+      ctx.fillRect(smokeX, smokeY, 4, 3);
+    }
+  }
+
+  /** Render a pier with a small boat on a water tile */
+  private renderPier(ctx: CanvasRenderingContext2D, sx: number, cy: number): void {
+    // Wooden pier planks
+    ctx.fillStyle = '#8a6a3a';
+    ctx.fillRect(sx - 8, cy - 2, 16, 4);
+    ctx.fillStyle = '#7a5a2a';
+    ctx.fillRect(sx - 6, cy - 1, 12, 2);
+    // Support posts
+    ctx.fillStyle = '#5a4020';
+    ctx.fillRect(sx - 7, cy + 2, 2, 4);
+    ctx.fillRect(sx + 5, cy + 2, 2, 4);
+    // Small boat moored at pier
+    ctx.fillStyle = '#6a5030';
+    ctx.fillRect(sx - 5, cy + 5, 10, 3);
+    ctx.fillStyle = '#8a7040';
+    ctx.fillRect(sx - 4, cy + 5, 8, 2);
+    // Mast
+    ctx.fillStyle = '#5a4020';
+    ctx.fillRect(sx, cy + 1, 1, 5);
+    // Sail
+    ctx.fillStyle = '#d8d0c0';
+    ctx.fillRect(sx + 1, cy + 1, 3, 3);
+    ctx.fillStyle = '#c8c0b0';
+    ctx.fillRect(sx + 1, cy + 2, 2, 2);
+  }
+
   /** Render a location (settlement) */
   private renderLocation(
     ctx: CanvasRenderingContext2D,
@@ -392,14 +477,15 @@ export class Renderer {
     const sy = (x + y) * (TILE_HEIGHT / 2);
     const elevOffset = Math.floor(elevation * 5) * ELEVATION_HEIGHT;
 
-    const sprite = getBuildingSprite(loc.type, loc.size, countryColor);
+    const sprite = getBuildingSprite(loc.type, loc.size, countryColor, loc.originalType);
     ctx.drawImage(sprite, sx - 24, sy - elevOffset - 40);
 
-    // Location name label
-    ctx.fillStyle = PALETTE.uiText;
+    // Location name label — dimmed for ruins
+    ctx.fillStyle = loc.isDestroyed ? '#6a5a4a' : PALETTE.uiText;
     ctx.font = '7px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText(loc.name, sx, sy - elevOffset - 42);
+    const label = loc.isDestroyed ? `${loc.name} (ruins)` : loc.name;
+    ctx.fillText(label, sx, sy - elevOffset - 42);
   }
 
   /** Render a creature */
@@ -414,7 +500,7 @@ export class Renderer {
   }
 
   /** Render the player party */
-  private renderParty(ctx: CanvasRenderingContext2D, px: number, py: number, elevation: number): void {
+  private renderParty(ctx: CanvasRenderingContext2D, px: number, py: number, elevation: number, isSailing = false): void {
     const sx = (px - py) * (TILE_WIDTH / 2);
     const sy = (px + py) * (TILE_HEIGHT / 2);
     const elevOffset = Math.floor(elevation * 5) * ELEVATION_HEIGHT;
@@ -424,9 +510,61 @@ export class Renderer {
     ctx.fillStyle = hexToRgba(PALETTE.uiHighlight, pulse * 0.3);
     this.fillIsoDiamond(ctx, sx, sy - elevOffset, TILE_WIDTH + 4, TILE_HEIGHT + 2);
 
-    // Party sprite
+    if (isSailing) {
+      // Draw boat underneath the party
+      this.drawPartyBoat(ctx, sx, sy - elevOffset);
+    }
+
+    // Party sprite (riding on top of boat when sailing)
     const sprite = getPartySprite();
-    ctx.drawImage(sprite, sx - 8, sy - elevOffset - 20);
+    const yOff = isSailing ? -16 : -20; // sit lower in the boat
+    ctx.drawImage(sprite, sx - 8, sy - elevOffset + yOff);
+  }
+
+  /** Draw a boat sprite for when the party is sailing */
+  private drawPartyBoat(ctx: CanvasRenderingContext2D, sx: number, sy: number): void {
+    // Hull
+    ctx.fillStyle = '#6a4a28';
+    ctx.beginPath();
+    ctx.moveTo(sx - 14, sy - 2);
+    ctx.lineTo(sx - 10, sy + 4);
+    ctx.lineTo(sx + 10, sy + 4);
+    ctx.lineTo(sx + 14, sy - 2);
+    ctx.closePath();
+    ctx.fill();
+    // Deck
+    ctx.fillStyle = '#8a6a38';
+    ctx.fillRect(sx - 10, sy - 3, 20, 3);
+    // Keel bottom
+    ctx.fillStyle = '#5a3a18';
+    ctx.fillRect(sx - 8, sy + 3, 16, 2);
+    // Mast
+    ctx.fillStyle = '#5a4020';
+    ctx.fillRect(sx - 1, sy - 18, 2, 16);
+    // Sail
+    ctx.fillStyle = '#e0d8c8';
+    ctx.beginPath();
+    ctx.moveTo(sx + 1, sy - 17);
+    ctx.lineTo(sx + 12, sy - 10);
+    ctx.lineTo(sx + 1, sy - 4);
+    ctx.closePath();
+    ctx.fill();
+    // Sail shadow
+    ctx.fillStyle = '#c8c0b0';
+    ctx.beginPath();
+    ctx.moveTo(sx + 1, sy - 12);
+    ctx.lineTo(sx + 8, sy - 8);
+    ctx.lineTo(sx + 1, sy - 4);
+    ctx.closePath();
+    ctx.fill();
+    // Gentle bobbing wave line
+    const bob = Math.sin(this.animationTime * 2) * 1;
+    ctx.strokeStyle = 'rgba(90,170,220,0.4)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(sx - 16, sy + 5 + bob);
+    ctx.quadraticCurveTo(sx, sy + 3 + bob, sx + 16, sy + 5 + bob);
+    ctx.stroke();
   }
 
   /** Render selection highlight on a tile */
@@ -548,6 +686,26 @@ export class Renderer {
     const py = mmY + state.party.position.y * scaleY;
     ctx.fillStyle = PALETTE.uiHighlight;
     ctx.fillRect(px - 2, py - 2, 4, 4);
+
+    // Cache bounds for click detection
+    this.minimapBounds = { x: mmX, y: mmY, size: mmSize };
+  }
+
+  /** Minimap screen bounds (updated each frame) */
+  private minimapBounds = { x: 0, y: 0, size: 0 };
+
+  /**
+   * If screenX/screenY is inside the minimap, returns the tile coordinates.
+   * Otherwise returns null.
+   */
+  handleMinimapClick(screenX: number, screenY: number, worldWidth: number, worldHeight: number): { tx: number; ty: number } | null {
+    const { x, y, size } = this.minimapBounds;
+    if (size === 0) return null;
+    if (screenX < x || screenX > x + size || screenY < y || screenY > y + size) return null;
+
+    const tx = Math.floor(((screenX - x) / size) * worldWidth);
+    const ty = Math.floor(((screenY - y) / size) * worldHeight);
+    return { tx, ty };
   }
 
   /** Generate minimap as offscreen canvas */

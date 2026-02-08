@@ -8,6 +8,8 @@ import { findPath } from '../utils/pathfinding';
 import { getMovementCost } from '../utils/movement-cost';
 import { SeededRandom, generateId } from '../utils/random';
 import { addToStorage } from './economy-engine';
+import { CREATURE_DEFINITIONS } from '../data/creature-data';
+import type { Creature } from '../types/creature';
 
 /**
  * Establish trade routes between settlements that have
@@ -217,5 +219,63 @@ export function updateRouteDanger(world: World): void {
       }
     }
     route.dangerLevel = Math.min(1, danger);
+  }
+}
+
+/**
+ * Spawn visible trader creatures on active trade routes.
+ * Each active route gets a trader caravan that walks back and forth.
+ */
+export function spawnTraders(world: World, rng: SeededRandom): void {
+  const MAX_TRADERS = 15;
+
+  // Count existing traders
+  let traderCount = 0;
+  for (const c of world.creatures.values()) {
+    if (c.type === 'trader' && c.health > 0) traderCount++;
+  }
+
+  for (const route of world.tradeRoutes.values()) {
+    if (!route.isActive || route.path.length < 3) continue;
+    if (traderCount >= MAX_TRADERS) break;
+
+    // Check if this route already has a trader
+    const hasTrader = Array.from(world.creatures.values()).some(
+      c => c.type === 'trader' && c.health > 0 &&
+        (c.homeLocationId === route.fromLocationId || c.homeLocationId === route.toLocationId)
+    );
+    if (hasTrader) continue;
+
+    // Spawn a trader at the origin
+    const from = world.locations.get(route.fromLocationId);
+    if (!from || from.isDestroyed) continue;
+
+    const def = CREATURE_DEFINITIONS['trader'];
+    const id = generateId('creature');
+
+    const trader: Creature = {
+      id,
+      type: 'trader',
+      name: null,
+      position: { ...from.position },
+      health: def.baseHealth,
+      maxHealth: def.baseHealth,
+      attack: def.baseAttack,
+      defense: def.baseDefense,
+      speed: def.baseSpeed,
+      behavior: 'trading',
+      homePosition: { ...from.position },
+      wanderRadius: 40,
+      isHostile: false,
+      loot: [],
+      age: 0,
+      lastActionTurn: 0,
+      countryId: from.countryId,
+      targetLocationId: route.toLocationId,
+      homeLocationId: route.fromLocationId,
+    };
+
+    world.creatures.set(id, trader);
+    traderCount++;
   }
 }

@@ -105,6 +105,8 @@ export interface Location {
   foundedTurn: number;
   isDestroyed: boolean;
   growthPoints: number;      // accumulates toward next tier
+  durability: number;        // 0–100, settlement HP — 0 = destroyed
+  originalType: LocationType | null; // what it was before being destroyed
 }
 
 /** Thresholds for location growth */

@@ -15,6 +15,8 @@ export interface Party {
   maxActionPoints: number;
   /** Queued path the party is walking along, one step per tick */
   queuedPath: { x: number; y: number }[];
+  /** Whether the party is currently sailing (can move on water) */
+  isSailing: boolean;
 }
 
 /** Complete game state */

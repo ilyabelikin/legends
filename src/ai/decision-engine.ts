@@ -211,6 +211,21 @@ export function decideCreatureAction(
     return decideBanditAction(creature, world, partyPos, distToParty, rng);
   }
 
+  // Guard: patrol near home settlement, hunt bandits
+  if (creature.type === 'guard') {
+    return decideGuardAction(creature, world, rng);
+  }
+
+  // Army: march toward target settlement
+  if (creature.type === 'army') {
+    return decideArmyAction(creature, world, rng);
+  }
+
+  // Trader: walk along trade route between settlements
+  if (creature.type === 'trader') {
+    return decideTraderAction(creature, world, rng);
+  }
+
   // Hostile creatures: attack if close, hunt otherwise
   if (creature.isHostile && distToParty < 4) {
     // Move toward party
@@ -409,4 +424,170 @@ function jobToBuilding(job: JobType): string {
     merchant: 'market',
   };
   return map[job] ?? 'house';
+}
+
+/** Guard AI — patrol near home, hunt bandits */
+function decideGuardAction(
+  creature: Creature,
+  world: World,
+  rng: SeededRandom,
+): { dx: number; dy: number; behavior: CreatureBehavior } {
+  // Hunt nearby bandits — scan within 8 tiles
+  let nearestBandit: Creature | null = null;
+  let nearestDist = Infinity;
+  for (const c of world.creatures.values()) {
+    if (c.type !== 'bandit' || c.health <= 0) continue;
+    const dist = manhattanDist(creature.position, c.position);
+    if (dist < nearestDist && dist < 8) {
+      nearestDist = dist;
+      nearestBandit = c;
+    }
+  }
+
+  if (nearestBandit) {
+    return {
+      dx: Math.sign(nearestBandit.position.x - creature.position.x),
+      dy: Math.sign(nearestBandit.position.y - creature.position.y),
+      behavior: 'hunting',
+    };
+  }
+
+  // Return home if too far
+  const distToHome = creature.homePosition
+    ? manhattanDist(creature.position, creature.homePosition)
+    : 0;
+  if (distToHome > creature.wanderRadius && creature.homePosition) {
+    return {
+      dx: Math.sign(creature.homePosition.x - creature.position.x),
+      dy: Math.sign(creature.homePosition.y - creature.position.y),
+      behavior: 'patrolling',
+    };
+  }
+
+  // Random patrol
+  if (rng.chance(0.4)) {
+    return {
+      dx: rng.nextInt(-1, 1),
+      dy: rng.nextInt(-1, 1),
+      behavior: 'patrolling',
+    };
+  }
+
+  return { dx: 0, dy: 0, behavior: 'patrolling' };
+}
+
+/** Army AI — march toward target settlement, attack on arrival */
+function decideArmyAction(
+  creature: Creature,
+  world: World,
+  rng: SeededRandom,
+): { dx: number; dy: number; behavior: CreatureBehavior } {
+  // If we have a target, march toward it
+  if (creature.targetLocationId) {
+    const target = world.locations.get(creature.targetLocationId);
+    if (target && !target.isDestroyed) {
+      const dist = manhattanDist(creature.position, target.position);
+
+      // Already at target — stay and attack (combat handled in military-system)
+      if (dist <= 1) {
+        // Move onto the settlement tile
+        return {
+          dx: Math.sign(target.position.x - creature.position.x),
+          dy: Math.sign(target.position.y - creature.position.y),
+          behavior: 'aggressive',
+        };
+      }
+
+      // March toward target (2 tiles per turn, prefer roads)
+      const dx = Math.sign(target.position.x - creature.position.x) * Math.min(2, dist);
+      const dy = Math.sign(target.position.y - creature.position.y) * Math.min(2, dist);
+      return { dx, dy, behavior: 'marching' };
+    } else {
+      // Target destroyed — look for a new one
+      creature.targetLocationId = null;
+    }
+  }
+
+  // No target: find nearest enemy settlement
+  if (creature.countryId) {
+    const country = world.countries.get(creature.countryId);
+    if (country) {
+      let nearest: Location | null = null;
+      let nearestDist = Infinity;
+      for (const loc of world.locations.values()) {
+        if (loc.isDestroyed || !loc.countryId) continue;
+        if (loc.countryId === creature.countryId) continue; // same side
+        // Check if this country is actually an enemy
+        if (!country.enemies.includes(loc.countryId)) continue;
+        const dist = manhattanDist(creature.position, loc.position);
+        if (dist < nearestDist) {
+          nearestDist = dist;
+          nearest = loc;
+        }
+      }
+      if (nearest) {
+        creature.targetLocationId = nearest.id;
+        return {
+          dx: Math.sign(nearest.position.x - creature.position.x),
+          dy: Math.sign(nearest.position.y - creature.position.y),
+          behavior: 'marching',
+        };
+      }
+    }
+  }
+
+  // No enemies found — return home
+  if (creature.homePosition) {
+    const distHome = manhattanDist(creature.position, creature.homePosition);
+    if (distHome > 3) {
+      return {
+        dx: Math.sign(creature.homePosition.x - creature.position.x),
+        dy: Math.sign(creature.homePosition.y - creature.position.y),
+        behavior: 'marching',
+      };
+    }
+  }
+
+  return { dx: 0, dy: 0, behavior: 'patrolling' };
+}
+
+/** Trader AI — walk between home and target settlement, swap on arrival */
+function decideTraderAction(
+  creature: Creature,
+  world: World,
+  _rng: SeededRandom,
+): { dx: number; dy: number; behavior: CreatureBehavior } {
+  if (creature.targetLocationId) {
+    const target = world.locations.get(creature.targetLocationId);
+    if (target && !target.isDestroyed) {
+      const dist = manhattanDist(creature.position, target.position);
+
+      if (dist <= 1) {
+        // Arrived — swap target and home (walk back)
+        const oldTarget = creature.targetLocationId;
+        creature.targetLocationId = creature.homeLocationId;
+        creature.homeLocationId = oldTarget;
+        return { dx: 0, dy: 0, behavior: 'trading' };
+      }
+
+      return {
+        dx: Math.sign(target.position.x - creature.position.x),
+        dy: Math.sign(target.position.y - creature.position.y),
+        behavior: 'trading',
+      };
+    }
+  }
+
+  if (creature.homePosition) {
+    const distHome = manhattanDist(creature.position, creature.homePosition);
+    if (distHome > 1) {
+      return {
+        dx: Math.sign(creature.homePosition.x - creature.position.x),
+        dy: Math.sign(creature.homePosition.y - creature.position.y),
+        behavior: 'trading',
+      };
+    }
+  }
+
+  return { dx: 0, dy: 0, behavior: 'trading' };
 }

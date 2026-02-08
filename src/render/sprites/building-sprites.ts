@@ -9,12 +9,13 @@ export function getBuildingSprite(
   locationType: LocationType,
   size: number,
   countryColor: string | null,
+  originalType: LocationType | null = null,
 ): OffscreenCanvas {
-  const key = `${locationType}_${size}_${countryColor ?? 'none'}`;
+  const key = `${locationType}_${size}_${countryColor ?? 'none'}_${originalType ?? ''}`;
   const cached = buildingCache.get(key);
   if (cached) return cached;
 
-  const sprite = createBuildingSprite(locationType, size, countryColor);
+  const sprite = createBuildingSprite(locationType, size, countryColor, originalType);
   buildingCache.set(key, sprite);
   return sprite;
 }
@@ -24,6 +25,7 @@ function createBuildingSprite(
   type: LocationType,
   size: number,
   countryColor: string | null,
+  originalType: LocationType | null = null,
 ): OffscreenCanvas {
   const canvas = new OffscreenCanvas(48, 48);
   const ctx = canvas.getContext('2d')!;
@@ -69,7 +71,7 @@ function createBuildingSprite(
       drawDungeon(ctx);
       break;
     case 'ruins':
-      drawRuins(ctx);
+      drawRuinsOf(ctx, originalType);
       break;
     case 'dragon_lair':
       drawDragonLair(ctx);
@@ -274,17 +276,179 @@ function drawDungeon(ctx: OffscreenCanvasRenderingContext2D): void {
   ctx.fillRect(23, 33, 2, 1);
 }
 
-function drawRuins(ctx: OffscreenCanvasRenderingContext2D): void {
+/** Draw ruins variant based on what the settlement used to be */
+function drawRuinsOf(ctx: OffscreenCanvasRenderingContext2D, originalType: LocationType | null): void {
+  switch (originalType) {
+    case 'city':
+    case 'town':
+      drawTownRuins(ctx);
+      break;
+    case 'castle':
+      drawCastleRuins(ctx);
+      break;
+    case 'village':
+    case 'hamlet':
+      drawVillageRuins(ctx);
+      break;
+    case 'farm':
+      drawFarmRuins(ctx);
+      break;
+    case 'mine':
+      drawMineRuins(ctx);
+      break;
+    case 'fishing_village':
+    case 'port':
+      drawPortRuins(ctx);
+      break;
+    default:
+      drawSmallRuins(ctx);
+      break;
+  }
+}
+
+function drawTownRuins(ctx: OffscreenCanvasRenderingContext2D): void {
+  // Collapsed tower
   ctx.fillStyle = PALETTE.stoneWallDark;
+  ctx.fillRect(18, 18, 8, 14);
+  ctx.fillStyle = '#5a5a5a';
+  ctx.fillRect(18, 18, 3, 10);
+  // Broken top
+  ctx.fillRect(19, 14, 3, 4);
+  ctx.fillRect(23, 16, 2, 2);
   // Broken walls
-  ctx.fillRect(12, 30, 4, 8);
-  ctx.fillRect(20, 28, 3, 10);
-  ctx.fillRect(30, 32, 5, 6);
-  ctx.fillRect(14, 36, 20, 2);
+  ctx.fillRect(8, 30, 4, 8);
+  ctx.fillRect(34, 28, 5, 10);
+  ctx.fillRect(28, 34, 3, 4);
+  // Foundation line
+  ctx.fillStyle = '#4a4a4a';
+  ctx.fillRect(8, 38, 32, 2);
+  // Rubble piles
+  ctx.fillStyle = '#8a8070';
+  ctx.fillRect(12, 34, 5, 3);
+  ctx.fillRect(24, 35, 6, 2);
+  ctx.fillRect(30, 32, 4, 3);
+  // Charred wood
+  ctx.fillStyle = '#3a2a1a';
+  ctx.fillRect(14, 32, 3, 2);
+  ctx.fillRect(26, 33, 4, 1);
+}
+
+function drawCastleRuins(ctx: OffscreenCanvasRenderingContext2D): void {
+  // Broken left tower
+  ctx.fillStyle = PALETTE.stoneWallDark;
+  ctx.fillRect(6, 16, 8, 14);
+  ctx.fillStyle = '#5a5a5a';
+  ctx.fillRect(6, 16, 2, 10);
+  // Broken battlements
+  ctx.fillRect(6, 14, 2, 3);
+  // Right tower mostly collapsed
+  ctx.fillRect(36, 22, 6, 8);
+  ctx.fillRect(37, 20, 3, 2);
+  // Wall remnant
+  ctx.fillRect(14, 26, 20, 3);
+  ctx.fillStyle = '#4a4a4a';
+  ctx.fillRect(14, 29, 20, 2);
+  // Collapsed keep
+  ctx.fillStyle = '#6a6a6a';
+  ctx.fillRect(20, 18, 8, 10);
+  ctx.fillStyle = '#5a5a5a';
+  ctx.fillRect(20, 14, 6, 4);
   // Rubble
-  ctx.fillStyle = '#8a8a7a';
-  ctx.fillRect(16, 34, 3, 2);
-  ctx.fillRect(26, 35, 4, 2);
+  ctx.fillStyle = '#8a8070';
+  ctx.fillRect(10, 30, 8, 4);
+  ctx.fillRect(28, 28, 6, 4);
+  // Gate rubble
+  ctx.fillStyle = '#3a3a3a';
+  ctx.fillRect(22, 32, 4, 6);
+}
+
+function drawVillageRuins(ctx: OffscreenCanvasRenderingContext2D): void {
+  // Collapsed houses — broken wood frames
+  ctx.fillStyle = PALETTE.woodWallDark;
+  ctx.fillRect(10, 32, 6, 4);
+  ctx.fillRect(12, 30, 3, 2);
+  ctx.fillRect(28, 30, 8, 5);
+  ctx.fillRect(30, 28, 4, 2);
+  // Charred roof pieces
+  ctx.fillStyle = '#3a2a1a';
+  ctx.fillRect(9, 30, 8, 2);
+  ctx.fillRect(27, 28, 10, 2);
+  // Scattered planks
+  ctx.fillStyle = '#6a5028';
+  ctx.fillRect(18, 34, 6, 1);
+  ctx.fillRect(20, 36, 4, 1);
+  // Rubble
+  ctx.fillStyle = '#8a8070';
+  ctx.fillRect(14, 35, 4, 2);
+  ctx.fillRect(22, 33, 3, 2);
+}
+
+function drawFarmRuins(ctx: OffscreenCanvasRenderingContext2D): void {
+  // Collapsed barn frame
+  ctx.fillStyle = PALETTE.woodWallDark;
+  ctx.fillRect(14, 30, 8, 5);
+  ctx.fillRect(16, 28, 4, 2);
+  // Charred planks
+  ctx.fillStyle = '#3a2a1a';
+  ctx.fillRect(13, 28, 10, 2);
+  // Overgrown field — dead crops
+  ctx.fillStyle = '#8a7a40';
+  ctx.fillRect(26, 32, 12, 6);
+  ctx.fillStyle = '#6a5a30';
+  for (let i = 0; i < 3; i++) {
+    ctx.fillRect(28 + i * 3, 33 + i, 4, 1);
+  }
+}
+
+function drawMineRuins(ctx: OffscreenCanvasRenderingContext2D): void {
+  // Collapsed mine entrance
+  ctx.fillStyle = '#2a2a2a';
+  ctx.fillRect(18, 30, 12, 8);
+  // Broken timber frame
+  ctx.fillStyle = PALETTE.woodWallDark;
+  ctx.fillRect(16, 28, 3, 6);
+  ctx.fillRect(29, 28, 3, 4);
+  ctx.fillRect(17, 27, 14, 2);
+  // Collapsed rocks
+  ctx.fillStyle = '#7a6a5a';
+  ctx.fillRect(20, 36, 8, 3);
+  ctx.fillRect(22, 34, 4, 2);
+}
+
+function drawPortRuins(ctx: OffscreenCanvasRenderingContext2D): void {
+  // Broken dock pilings
+  ctx.fillStyle = PALETTE.woodWallDark;
+  ctx.fillRect(14, 38, 3, 5);
+  ctx.fillRect(22, 38, 3, 5);
+  ctx.fillRect(30, 38, 3, 5);
+  // Collapsed dock planks
+  ctx.fillStyle = '#5a4020';
+  ctx.fillRect(12, 36, 24, 2);
+  // Ruined warehouse
+  ctx.fillStyle = PALETTE.stoneWallDark;
+  ctx.fillRect(16, 28, 10, 6);
+  ctx.fillRect(18, 26, 6, 2);
+  // Rubble
+  ctx.fillStyle = '#8a8070';
+  ctx.fillRect(12, 34, 6, 2);
+  ctx.fillRect(28, 32, 4, 3);
+}
+
+function drawSmallRuins(ctx: OffscreenCanvasRenderingContext2D): void {
+  // Generic small ruins — broken walls and rubble
+  ctx.fillStyle = PALETTE.stoneWallDark;
+  ctx.fillRect(16, 32, 4, 6);
+  ctx.fillRect(28, 30, 3, 8);
+  // Foundation
+  ctx.fillStyle = '#4a4a4a';
+  ctx.fillRect(14, 38, 20, 2);
+  // Rubble
+  ctx.fillStyle = '#8a8070';
+  ctx.fillRect(18, 35, 5, 2);
+  ctx.fillRect(24, 36, 3, 2);
+  // Charred wood
+  ctx.fillStyle = '#3a2a1a';
+  ctx.fillRect(20, 34, 3, 1);
 }
 
 function drawDragonLair(ctx: OffscreenCanvasRenderingContext2D): void {

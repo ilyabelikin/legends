@@ -258,6 +258,8 @@ export function placeSettlements(
       foundedTurn: 0,
       isDestroyed: false,
       growthPoints: 0,
+      durability: finalType === 'town' ? 80 : finalType === 'village' ? 60 : finalType === 'city' ? 100 : 40,
+      originalType: null,
     };
 
     locations.set(id, location);
@@ -268,59 +270,91 @@ export function placeSettlements(
   return locations;
 }
 
-/** Generate initial resource stocks for a location */
+/**
+ * Generate initial resource stocks for a location.
+ * Cities/castles get large stockpiles but NO farm fields —
+ * they depend on trade for food resupply.
+ * Villages/farms/fishing villages are food PRODUCERS.
+ */
 function getInitialStorage(type: LocationType, rng: SeededRandom): ResourceStack[] {
   const storage: ResourceStack[] = [];
   const add = (id: string, qty: number) => {
-    storage.push({ resourceId: id, quantity: qty, quality: 0.7, age: 0 });
+    storage.push({ resourceId: id, quantity: Math.round(qty), quality: 0.7, age: 0 });
   };
 
-  // All settlements start with some food
-  add('wheat', rng.nextInt(5, 15));
-
   switch (type) {
-    case 'town':
     case 'city':
-      add('bread', rng.nextInt(10, 30));
-      add('wheat', rng.nextInt(10, 20));
+      // Large stockpile but will drain fast without trade
+      add('bread', rng.nextInt(40, 60));
+      add('meat', rng.nextInt(15, 25));
+      add('wheat', rng.nextInt(20, 35));
+      add('ale', rng.nextInt(15, 25));
+      add('wood', rng.nextInt(15, 30));
+      add('stone', rng.nextInt(10, 20));
+      add('iron_ore', rng.nextInt(5, 15));
+      add('tools', rng.nextInt(5, 12));
+      add('fabric', rng.nextInt(5, 10));
+      add('weapons', rng.nextInt(2, 6));
+      add('armor', rng.nextInt(1, 3));
+      break;
+    case 'town':
+      add('bread', rng.nextInt(25, 40));
+      add('wheat', rng.nextInt(15, 25));
+      add('meat', rng.nextInt(8, 15));
+      add('ale', rng.nextInt(8, 15));
       add('wood', rng.nextInt(10, 25));
       add('stone', rng.nextInt(5, 15));
-      add('iron_ore', rng.nextInt(3, 10));
       add('tools', rng.nextInt(3, 8));
       add('fabric', rng.nextInt(2, 6));
-      add('ale', rng.nextInt(5, 15));
-      if (rng.chance(0.3)) add('weapons', rng.nextInt(1, 4));
+      if (rng.chance(0.4)) add('weapons', rng.nextInt(1, 4));
+      break;
+    case 'castle':
+      add('bread', rng.nextInt(30, 50));
+      add('meat', rng.nextInt(15, 25));
+      add('ale', rng.nextInt(10, 20));
+      add('weapons', rng.nextInt(5, 10));
+      add('armor', rng.nextInt(3, 6));
+      add('stone', rng.nextInt(10, 20));
+      add('tools', rng.nextInt(3, 6));
       break;
     case 'village':
-      add('bread', rng.nextInt(5, 15));
-      add('wood', rng.nextInt(5, 15));
+      add('wheat', rng.nextInt(15, 25));
+      add('bread', rng.nextInt(8, 15));
+      add('wood', rng.nextInt(8, 15));
       add('tools', rng.nextInt(1, 4));
       break;
     case 'hamlet':
     case 'homestead':
+      add('wheat', rng.nextInt(8, 15));
       add('wood', rng.nextInt(3, 10));
       break;
     case 'farm':
-      add('wheat', rng.nextInt(10, 25));
-      add('sheep', rng.nextInt(2, 6));
+      add('wheat', rng.nextInt(20, 40));
+      add('sheep', rng.nextInt(3, 8));
+      add('bread', rng.nextInt(5, 10));
       break;
     case 'mine':
-      add('iron_ore', rng.nextInt(5, 15));
-      add('coal', rng.nextInt(5, 10));
-      add('stone', rng.nextInt(5, 10));
+      add('iron_ore', rng.nextInt(10, 25));
+      add('coal', rng.nextInt(8, 15));
+      add('stone', rng.nextInt(8, 15));
+      add('bread', rng.nextInt(5, 10));
       break;
     case 'lumber_camp':
-      add('wood', rng.nextInt(15, 30));
+      add('wood', rng.nextInt(20, 40));
+      add('wheat', rng.nextInt(5, 10));
       break;
     case 'fishing_village':
-      add('fish', rng.nextInt(5, 15));
+      add('fish', rng.nextInt(10, 25));
+      add('wheat', rng.nextInt(3, 8));
       break;
     case 'port':
-      add('fish', rng.nextInt(10, 20));
-      add('bread', rng.nextInt(5, 10));
-      add('ale', rng.nextInt(3, 8));
+      add('fish', rng.nextInt(15, 30));
+      add('bread', rng.nextInt(10, 15));
+      add('ale', rng.nextInt(5, 12));
+      add('tools', rng.nextInt(2, 5));
       break;
     default:
+      add('wheat', rng.nextInt(3, 8));
       break;
   }
 

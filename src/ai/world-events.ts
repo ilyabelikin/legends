@@ -46,7 +46,8 @@ export function generateWorldEvents(
         'major',
       ));
 
-      // Apply damage
+      // Apply damage — including durability
+      nearest.durability = Math.max(0, nearest.durability - rng.nextInt(15, 30));
       nearest.defenseLevel = Math.max(0, nearest.defenseLevel - 2);
       nearest.safety = Math.max(0, nearest.safety - 30);
       nearest.happiness = Math.max(0, nearest.happiness - 20);
@@ -82,12 +83,13 @@ export function generateWorldEvents(
           'moderate',
         ));
 
-        // Steal resources
+        // Steal resources and damage durability
         const stolen = Math.min(loc.storage.length, rng.nextInt(1, 3));
         for (let i = 0; i < stolen && loc.storage.length > 0; i++) {
           const idx = rng.nextInt(0, loc.storage.length - 1);
           loc.storage.splice(idx, 1);
         }
+        loc.durability = Math.max(0, loc.durability - rng.nextInt(3, 8));
         loc.safety = Math.max(0, loc.safety - 15);
         break;
       }

@@ -113,6 +113,7 @@ export class GameEngine {
       actionPoints: 6,
       maxActionPoints: 6,
       queuedPath: [],
+      isSailing: false,
     };
 
     // Initialize game state
@@ -198,32 +199,61 @@ export class GameEngine {
     if (!inBounds({ x: newX, y: newY }, world.width, world.height)) return false;
 
     const tile = world.tiles[newY][newX];
-    if (isWater(tile.terrainType)) {
-      this.addLog('The way is blocked by water.', 'system');
-      return false;
+    const water = isWater(tile.terrainType);
+    const pier = tile.features.some(f => f.type === 'pier');
+
+    // === Determine if the move is allowed and its cost ===
+    let cost: number;
+
+    if (party.isSailing) {
+      // SAILING: can move on water and pier tiles
+      if (water || pier) {
+        cost = 1;
+      } else {
+        // Trying to step onto land — allowed only if current tile is a pier
+        const currentTile = world.tiles[party.position.y][party.position.x];
+        const onPier = currentTile.features.some(f => f.type === 'pier');
+        if (onPier) {
+          // Disembarking from pier onto adjacent land
+          party.isSailing = false;
+          cost = getMovementPointCost(tile);
+          this.addLog('You disembark at the pier.', 'discovery');
+        } else {
+          this.addLog('You need a pier to disembark.', 'system');
+          return false;
+        }
+      }
+    } else {
+      // WALKING: can move on land and pier tiles; water is blocked
+      if (water && !pier) {
+        this.addLog('The way is blocked by water.', 'system');
+        return false;
+      }
+      cost = pier ? 1 : getMovementPointCost(tile);
     }
 
-    // Movement cost — biome base reduced by road level
-    const moveCost = getMovementPointCost(tile);
-
-    if (party.actionPoints < moveCost) {
+    if (party.actionPoints < cost) {
       this.addLog('Not enough action points. End your turn.', 'system');
       return false;
     }
+    party.actionPoints -= cost;
 
-    party.actionPoints -= moveCost;
+    // === Handle sailing state transitions ===
+    if (party.isSailing && !water && !pier) {
+      // Stepped onto dry land — disembark
+      party.isSailing = false;
+      this.addLog('You disembark.', 'discovery');
+    }
+
     party.position.x = newX;
     party.position.y = newY;
 
-    // Update party member positions
     for (const member of party.members) {
       member.position = { ...party.position };
     }
 
     this.updateVisibility();
     this.describeCurrentLocation();
-
-    // Check for encounters
     this.checkEncounters();
 
     return true;
@@ -242,13 +272,25 @@ export class GameEngine {
       return false;
     }
 
-    // Find path — A* naturally prefers roads (lower cost)
+    // Find path — allows both land and water via piers
+    // Piers connect land ↔ water; the pathfinder treats them as
+    // bridges so the party can sail to a pier and continue on land.
     const path = findPath(
       party.position,
       { x: targetX, y: targetY },
       world.width,
       world.height,
-      (x, y) => getMovementCost(world.tiles[y][x]),
+      (x, y) => {
+        const t = world.tiles[y][x];
+        const water = isWater(t.terrainType);
+        const hasPier = t.features.some(f => f.type === 'pier');
+        // Piers are always passable (cheap transition point)
+        if (hasPier) return 1;
+        // Water: passable when sailing, blocked when walking
+        if (water) return party.isSailing ? 1 : Infinity;
+        // Land: always passable (if sailing, moveParty handles disembark)
+        return getMovementCost(t);
+      },
     );
 
     if (path.length < 2) {
@@ -259,6 +301,89 @@ export class GameEngine {
     // Store the remaining steps (skip index 0 which is the current position)
     party.queuedPath = path.slice(1);
     return true;
+  }
+
+  /** Board a boat at a pier tile. Costs gold and 1 AP. */
+  embark(): boolean {
+    const { party, world } = this.state;
+    if (party.isSailing) {
+      this.addLog('You are already sailing.', 'system');
+      return false;
+    }
+
+    // Check adjacent tiles for a pier
+    const { x: px, y: py } = party.position;
+    let pierTile: { x: number; y: number } | null = null;
+    const dirs = [
+      { dx: 0, dy: 1 }, { dx: 1, dy: 0 }, { dx: 0, dy: -1 }, { dx: -1, dy: 0 },
+      { dx: 1, dy: 1 }, { dx: -1, dy: -1 }, { dx: 1, dy: -1 }, { dx: -1, dy: 1 },
+    ];
+    // Also check current tile
+    const currentTile = world.tiles[py][px];
+    if (currentTile.features.some(f => f.type === 'pier')) {
+      pierTile = { x: px, y: py };
+    }
+    if (!pierTile) {
+      for (const d of dirs) {
+        const nx = px + d.dx;
+        const ny = py + d.dy;
+        if (nx >= 0 && nx < world.width && ny >= 0 && ny < world.height) {
+          if (world.tiles[ny][nx].features.some(f => f.type === 'pier')) {
+            pierTile = { x: nx, y: ny };
+            break;
+          }
+        }
+      }
+    }
+
+    if (!pierTile) {
+      this.addLog('No pier nearby to board a boat.', 'system');
+      return false;
+    }
+
+    const boatCost = 10;
+    if (party.gold < boatCost) {
+      this.addLog(`A boat ride costs ${boatCost}g — you can't afford it.`, 'system');
+      return false;
+    }
+    if (party.actionPoints < 1) {
+      this.addLog('Not enough action points.', 'system');
+      return false;
+    }
+
+    party.gold -= boatCost;
+    party.actionPoints -= 1;
+    party.isSailing = true;
+
+    // Move party onto the pier tile if not already there
+    if (party.position.x !== pierTile.x || party.position.y !== pierTile.y) {
+      party.position = { ...pierTile };
+      for (const member of party.members) {
+        member.position = { ...pierTile };
+      }
+    }
+
+    this.addLog(`You board a boat for ${boatCost}g. Right-click water to sail!`, 'discovery');
+    this.updateVisibility();
+    return true;
+  }
+
+  /** Check if party can embark (pier nearby) */
+  canEmbark(): boolean {
+    if (this.state.party.isSailing) return false;
+    const { x: px, y: py } = this.state.party.position;
+    const world = this.state.world;
+    // Check current tile and neighbors for pier
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const nx = px + dx;
+        const ny = py + dy;
+        if (nx >= 0 && nx < world.width && ny >= 0 && ny < world.height) {
+          if (world.tiles[ny][nx].features.some(f => f.type === 'pier')) return true;
+        }
+      }
+    }
+    return false;
   }
 
   /**
@@ -475,7 +600,8 @@ export class GameEngine {
     const leader = party.members[0];
     if (!leader) return;
 
-    // Simple auto-combat for now
+    const label = creature.name ?? creature.type;
+
     let partyHP = leader.health;
     let creatureHP = creature.health;
 
@@ -484,34 +610,46 @@ export class GameEngine {
     const creatureAttack = creature.attack;
     const creatureDefense = creature.defense;
 
+    let totalDmgDealt = 0;
+    let totalDmgTaken = 0;
     let rounds = 0;
+
     while (partyHP > 0 && creatureHP > 0 && rounds < 20) {
       rounds++;
       // Party attacks
       const partyDmg = Math.max(1, partyAttack - creatureDefense + Math.floor(Math.random() * 4) - 2);
       creatureHP -= partyDmg;
+      totalDmgDealt += partyDmg;
 
       // Creature attacks
       if (creatureHP > 0) {
         const creatureDmg = Math.max(1, creatureAttack - partyDefense + Math.floor(Math.random() * 4) - 2);
         partyHP -= creatureDmg;
+        totalDmgTaken += creatureDmg;
       }
     }
 
-    if (creatureHP <= 0) {
-      this.addLog(`You defeated the ${creature.name ?? creature.type}!`, 'combat');
-      creature.health = 0;
+    // Always write back HP to both sides
+    creature.health = Math.max(0, creatureHP);
+    leader.health = Math.max(1, partyHP);
+
+    if (creature.health <= 0) {
+      this.addLog(`You defeated ${label}! (${rounds} rounds, dealt ${totalDmgDealt} dmg)`, 'combat');
       // Collect loot
       for (const loot of creature.loot) {
-        this.addLog(`Obtained ${loot.quantity} ${loot.resourceId}.`, 'info');
+        this.addLog(`Obtained ${Math.round(loot.quantity)} ${loot.resourceId}.`, 'info');
       }
-      // XP gain — improve combat skill
-      leader.skills['combat'] = Math.min(100, (leader.skills['combat'] ?? 0) + 2);
+      // XP gain
+      leader.skills['combat'] = Math.min(100, (leader.skills['combat'] ?? 0) + 3);
     } else {
-      this.addLog(`The ${creature.name ?? creature.type} drove you back! You took heavy damage.`, 'danger');
+      this.addLog(
+        `Fought ${label} for ${rounds} rounds — dealt ${totalDmgDealt} dmg, took ${totalDmgTaken}. ` +
+        `${label} has ${Math.round(creature.health)}/${creature.maxHealth} HP left.`,
+        'combat',
+      );
+      // Still gain some XP for surviving
+      leader.skills['combat'] = Math.min(100, (leader.skills['combat'] ?? 0) + 1);
     }
-
-    leader.health = Math.max(1, partyHP);
   }
 
   /** Describe what's at the party's current location and discover news */
@@ -579,7 +717,7 @@ export class GameEngine {
     info.push(`Elevation: ${Math.round(tile.elevation * 100)}%`);
 
     if (tile.resourceDeposit) {
-      info.push(`Resource: ${tile.resourceDeposit.resourceId} (${tile.resourceDeposit.amount})`);
+      info.push(`Resource: ${tile.resourceDeposit.resourceId} (${Math.round(tile.resourceDeposit.amount)})`);
     }
 
     if (tile.locationId) {
@@ -587,6 +725,7 @@ export class GameEngine {
       if (loc) {
         info.push(`${loc.name} — ${loc.type}`);
         info.push(`Population: ${loc.residentIds.length}`);
+        info.push(`Durability: ${Math.round(loc.durability)}/100`);
         info.push(`Prosperity: ${Math.round(loc.prosperity)}`);
         info.push(`Safety: ${Math.round(loc.safety)}`);
         if (loc.countryId) {
@@ -602,7 +741,7 @@ export class GameEngine {
           info.push(`Stock:`);
           for (const g of goods) {
             const price = loc.marketPrices[g.resourceId] ?? '?';
-            info.push(`  ${g.resourceId}: ${g.quantity} (${price}g)`);
+            info.push(`  ${g.resourceId}: ${Math.round(g.quantity)} (${price}g)`);
           }
         }
       }
@@ -646,6 +785,10 @@ export class GameEngine {
     if (tile.roadLevel > 0) {
       const roadNames = ['', 'Path', 'Road', 'Highway'];
       info.push(`Road: ${roadNames[tile.roadLevel]}`);
+    }
+
+    if (tile.features.some(f => f.type === 'pier')) {
+      info.push(`Pier — press B to board a boat (10g)`);
     }
 
     return info;

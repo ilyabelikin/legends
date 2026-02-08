@@ -94,6 +94,12 @@ export class InputHandler {
         this.tryBuyFood();
         break;
 
+      // Embark / disembark at pier
+      case 'b': case 'B':
+        this.engine.cancelMovement();
+        this.engine.embark();
+        break;
+
       // Escape — cancel movement
       case 'Escape':
         this.engine.cancelMovement();
@@ -154,17 +160,24 @@ export class InputHandler {
 
     // Let the HUD handle clicks on log entries first
     if (e.button === 0 && this.hud?.handleClick(e.clientX, e.clientY, state)) {
-      return; // click was consumed by a log entry
+      return;
+    }
+
+    // Minimap click → center camera on that point
+    const mmTile = this.renderer.handleMinimapClick(
+      e.clientX, e.clientY, state.world.width, state.world.height,
+    );
+    if (mmTile) {
+      this.renderer.camera.centerOnTile(mmTile.tx, mmTile.ty);
+      return;
     }
 
     const tile = this.pickTile(e.clientX, e.clientY);
     if (!tile) return;
 
     if (e.button === 0) {
-      // Left-click → select tile for info
       state.selectedTile = { x: tile.x, y: tile.y };
     } else if (e.button === 2) {
-      // Right-click → set new movement target (cancels previous path)
       this.engine.cancelMovement();
       this.engine.movePartyToward(tile.x, tile.y);
     }
