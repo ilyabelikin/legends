@@ -3,12 +3,13 @@ import type { Character } from './character';
 import type { Item } from './item';
 import type { Season, Weather } from './season';
 import type { GameEvent } from './event';
+import type { ResourceStack } from './resource';
 
 /** The player's adventure party */
 export interface Party {
   members: Character[];
   position: { x: number; y: number };
-  inventory: Item[];
+  inventory: ResourceStack[];
   gold: number;
   reputation: Record<string, number>; // countryId → reputation (-100..100)
   actionPoints: number;

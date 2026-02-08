@@ -38,6 +38,7 @@ export function getCreatureSprite(type: CreatureType): OffscreenCanvas {
     case 'guard': drawGuard(ctx, 8, 16); break;
     case 'army': drawArmy(ctx, 8, 16); break;
     case 'trader': drawTrader(ctx, 8, 16); break;
+    case 'hunter': drawHunter(ctx, 8, 16); break;
   }
 
   entityCache.set(key, canvas);
@@ -246,6 +247,35 @@ function drawTrader(ctx: OffscreenCanvasRenderingContext2D, x: number, y: number
   ctx.fillStyle = PALETTE.clothBrown;
   ctx.fillRect(x + 4, y - 4, 1, 3);
   ctx.fillRect(x + 6, y - 4, 1, 3);
+}
+
+function drawHunter(ctx: OffscreenCanvasRenderingContext2D, x: number, y: number): void {
+  // Legs
+  ctx.fillStyle = '#6a5a4a';
+  ctx.fillRect(x - 2, y - 4, 2, 4);
+  ctx.fillRect(x + 1, y - 4, 2, 4);
+  // Body — leather vest
+  ctx.fillStyle = '#8a6a4a';
+  ctx.fillRect(x - 3, y - 9, 7, 5);
+  // Arms
+  ctx.fillStyle = PALETTE.skinPale;
+  ctx.fillRect(x - 4, y - 8, 1, 3);
+  ctx.fillRect(x + 4, y - 8, 1, 3);
+  // Head
+  ctx.fillStyle = PALETTE.skinPale;
+  ctx.fillRect(x - 1, y - 13, 3, 3);
+  // Hair/cap
+  ctx.fillStyle = '#6a4a2a';
+  ctx.fillRect(x - 1, y - 14, 3, 2);
+  // Bow in hand
+  ctx.fillStyle = '#5a4a3a';
+  ctx.fillRect(x - 5, y - 10, 1, 5); // bow arc
+  ctx.fillStyle = '#d0d0d0';
+  ctx.fillRect(x - 5, y - 10, 1, 1); // string top
+  ctx.fillRect(x - 5, y - 6, 1, 1); // string bottom
+  // Quiver on back
+  ctx.fillStyle = '#7a5a3a';
+  ctx.fillRect(x + 2, y - 11, 2, 4);
 }
 
 function drawGuard(ctx: OffscreenCanvasRenderingContext2D, x: number, y: number): void {

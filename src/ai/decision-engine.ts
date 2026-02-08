@@ -72,8 +72,53 @@ export function decideCharacterAction(
   const options: ActionOption[] = [];
   const home = character.homeLocationId ? world.locations.get(character.homeLocationId) : null;
 
+  // === SHEPHERDS: PROTECT FLOCK ===
+  if (character.jobType === 'shepherd') {
+    // Initialize herdedCreatureIds if missing (for backward compatibility)
+    if (!character.herdedCreatureIds) character.herdedCreatureIds = [];
+    
+    if (character.herdedCreatureIds.length > 0) {
+    // Check if any threats are near the flock
+    let nearestThreat: { x: number; y: number } | null = null;
+    let minDist = Infinity;
+
+    for (const creatureId of character.herdedCreatureIds) {
+      const sheep = world.creatures.get(creatureId);
+      if (!sheep || sheep.health <= 0) continue;
+
+      // Look for predators near this sheep
+      for (const predator of world.creatures.values()) {
+        if (predator.health <= 0) continue;
+        if (predator.type === 'wolf' || predator.type === 'bear' || predator.type === 'bandit') {
+          const dist = manhattanDist(sheep.position, predator.position);
+          if (dist < 8 && dist < minDist) {
+            minDist = dist;
+            nearestThreat = predator.position;
+          }
+        }
+      }
+    }
+
+    if (nearestThreat) {
+      // High priority: defend the flock!
+      options.push({
+        action: { type: 'herding' },
+        weight: 10.0, // very high priority
+        description: 'protect flock from predators',
+      });
+    } else {
+      // Normal herding work
+      options.push({
+        action: { type: 'herding' },
+        weight: config.workDrive * 0.8,
+        description: 'tend to flock',
+      });
+    }
+    }
+  }
+
   // === WORK ===
-  if (home && character.jobType !== 'unemployed' && character.jobType !== 'child' && character.jobType !== 'elder') {
+  if (home && character.jobType !== 'unemployed' && character.jobType !== 'child' && character.jobType !== 'elder' && character.jobType !== 'shepherd') {
     const workWeight = config.workDrive * (1 - character.personality.curiosity * 0.3);
     options.push({
       action: { type: 'working', buildingType: jobToBuilding(character.jobType) },
@@ -226,6 +271,11 @@ export function decideCreatureAction(
     return decideTraderAction(creature, world, rng);
   }
 
+  // Hunter: track and hunt wild game (deer, sheep, boar)
+  if (creature.type === 'hunter') {
+    return decideHunterAction(creature, world, rng);
+  }
+
   // Hostile creatures: attack if close, hunt otherwise
   if (creature.isHostile && distToParty < 4) {
     // Move toward party
@@ -266,7 +316,7 @@ export function decideCreatureAction(
   return { dx: 0, dy: 0, behavior: creature.behavior };
 }
 
-/** Dragon-specific AI — dragons are active flyers, not static */
+/** Dragon-specific AI — hunt, retreat when wounded, heal at lair */
 function decideDragonAction(
   creature: Creature,
   world: World,
@@ -277,9 +327,32 @@ function decideDragonAction(
   const distToHome = creature.homePosition
     ? manhattanDist(creature.position, creature.homePosition)
     : 0;
+  const healthPct = creature.health / creature.maxHealth;
 
-  // Chase party if fairly close
-  if (distToParty < 8) {
+  // === WOUNDED: retreat to lair and heal ===
+  if (healthPct < 0.4 && creature.homePosition) {
+    // At lair — rest and heal
+    if (distToHome <= 2) {
+      creature.health = Math.min(creature.maxHealth, creature.health + 5);
+      return { dx: 0, dy: 0, behavior: 'territorial' };
+    }
+    // Fly home fast
+    return {
+      dx: Math.sign(creature.homePosition.x - creature.position.x) * 3,
+      dy: Math.sign(creature.homePosition.y - creature.position.y) * 3,
+      behavior: 'fleeing',
+    };
+  }
+
+  // === HEAL slowly even when not at lair (1 HP/turn if above 40%) ===
+  if (healthPct < 1.0 && distToHome <= 3) {
+    creature.health = Math.min(creature.maxHealth, creature.health + 3);
+  } else if (healthPct < 1.0) {
+    creature.health = Math.min(creature.maxHealth, creature.health + 0.5);
+  }
+
+  // === Chase party if close (only when healthy enough) ===
+  if (distToParty < 8 && healthPct > 0.5) {
     return {
       dx: Math.sign(partyPos.x - creature.position.x) * 2,
       dy: Math.sign(partyPos.y - creature.position.y) * 2,
@@ -287,8 +360,8 @@ function decideDragonAction(
     };
   }
 
-  // Fly toward a settlement to menace it (10% chance per turn)
-  if (rng.chance(0.10)) {
+  // === Fly toward a settlement to menace it (10% chance) ===
+  if (rng.chance(0.10) && healthPct > 0.6) {
     let targetLoc: Location | null = null;
     let targetDist = Infinity;
     for (const loc of world.locations.values()) {
@@ -300,14 +373,13 @@ function decideDragonAction(
       }
     }
     if (targetLoc) {
-      // Fly 2-3 tiles toward the settlement
       const dx = Math.sign(targetLoc.position.x - creature.position.x) * rng.nextInt(1, 3);
       const dy = Math.sign(targetLoc.position.y - creature.position.y) * rng.nextInt(1, 3);
       return { dx, dy, behavior: 'aggressive' };
     }
   }
 
-  // Long-range migration — fly to a random distant point (8% chance)
+  // === Long-range migration (8% chance) ===
   if (rng.chance(0.08)) {
     return {
       dx: rng.nextInt(-3, 3),
@@ -316,7 +388,7 @@ function decideDragonAction(
     };
   }
 
-  // Return toward lair if very far away
+  // === Return toward lair if far away ===
   if (distToHome > creature.wanderRadius && creature.homePosition) {
     return {
       dx: Math.sign(creature.homePosition.x - creature.position.x) * 2,
@@ -325,7 +397,7 @@ function decideDragonAction(
     };
   }
 
-  // Patrol around lair — circle and wander (40% chance to move)
+  // === Patrol around lair ===
   if (rng.chance(0.4)) {
     return {
       dx: rng.nextInt(-2, 2),
@@ -411,6 +483,7 @@ function jobToBuilding(job: JobType): string {
     miner: 'mine_shaft',
     lumberjack: 'sawmill',
     fisher: 'dock',
+    shepherd: 'farm_field',
     blacksmith: 'blacksmith',
     weaver: 'weaver',
     baker: 'bakery',
@@ -426,28 +499,36 @@ function jobToBuilding(job: JobType): string {
   return map[job] ?? 'house';
 }
 
-/** Guard AI — patrol near home, hunt bandits */
+/** Guard AI — patrol near home, hunt bandits/dragons/enemy armies */
 function decideGuardAction(
   creature: Creature,
   world: World,
   rng: SeededRandom,
 ): { dx: number; dy: number; behavior: CreatureBehavior } {
-  // Hunt nearby bandits — scan within 8 tiles
-  let nearestBandit: Creature | null = null;
+  // Hunt nearby threats — bandits, dragons, enemy armies within 10 tiles
+  let nearestThreat: Creature | null = null;
   let nearestDist = Infinity;
   for (const c of world.creatures.values()) {
-    if (c.type !== 'bandit' || c.health <= 0) continue;
+    if (c.health <= 0) continue;
+    // Target bandits and dragons
+    const isThreat = c.type === 'bandit' || c.type === 'dragon';
+    // Target enemy armies (different country)
+    const isEnemyArmy = c.type === 'army' && c.countryId !== creature.countryId;
+    if (!isThreat && !isEnemyArmy) continue;
+
     const dist = manhattanDist(creature.position, c.position);
-    if (dist < nearestDist && dist < 8) {
+    // Pursue dragons from further away (they're a bigger threat)
+    const detectRange = c.type === 'dragon' ? 12 : 8;
+    if (dist < nearestDist && dist < detectRange) {
       nearestDist = dist;
-      nearestBandit = c;
+      nearestThreat = c;
     }
   }
 
-  if (nearestBandit) {
+  if (nearestThreat) {
     return {
-      dx: Math.sign(nearestBandit.position.x - creature.position.x),
-      dy: Math.sign(nearestBandit.position.y - creature.position.y),
+      dx: Math.sign(nearestThreat.position.x - creature.position.x),
+      dy: Math.sign(nearestThreat.position.y - creature.position.y),
       behavior: 'hunting',
     };
   }
@@ -551,12 +632,96 @@ function decideArmyAction(
   return { dx: 0, dy: 0, behavior: 'patrolling' };
 }
 
-/** Trader AI — walk between home and target settlement, swap on arrival */
+/** Hunter AI — patrol near home, hunt wild game (deer, sheep, boar) */
+function decideHunterAction(
+  creature: Creature,
+  world: World,
+  rng: SeededRandom,
+): { dx: number; dy: number; behavior: CreatureBehavior } {
+  // Hunt nearby game — deer, sheep, boar within detection range
+  let nearestPrey: Creature | null = null;
+  let nearestDist = Infinity;
+  for (const c of world.creatures.values()) {
+    if (c.health <= 0) continue;
+    // Target passive game animals
+    const isPrey = c.type === 'deer' || c.type === 'sheep' || c.type === 'boar';
+    if (!isPrey) continue;
+
+    const dist = manhattanDist(creature.position, c.position);
+    if (dist < nearestDist && dist < 12) {
+      nearestDist = dist;
+      nearestPrey = c;
+    }
+  }
+
+  if (nearestPrey) {
+    return {
+      dx: Math.sign(nearestPrey.position.x - creature.position.x),
+      dy: Math.sign(nearestPrey.position.y - creature.position.y),
+      behavior: 'hunting',
+    };
+  }
+
+  // Return home if too far
+  const distToHome = creature.homePosition
+    ? manhattanDist(creature.position, creature.homePosition)
+    : 0;
+  if (distToHome > creature.wanderRadius && creature.homePosition) {
+    return {
+      dx: Math.sign(creature.homePosition.x - creature.position.x),
+      dy: Math.sign(creature.homePosition.y - creature.position.y),
+      behavior: 'hunting',
+    };
+  }
+
+  // Random patrol to search for game
+  if (rng.chance(0.5)) {
+    return {
+      dx: rng.nextInt(-1, 1),
+      dy: rng.nextInt(-1, 1),
+      behavior: 'hunting',
+    };
+  }
+
+  return { dx: 0, dy: 0, behavior: 'hunting' };
+}
+
+/** Trader AI — walk between home and target settlement following trade route path */
 function decideTraderAction(
   creature: Creature,
   world: World,
   _rng: SeededRandom,
 ): { dx: number; dy: number; behavior: CreatureBehavior } {
+  // If trader has a path (from trade route), follow it step by step
+  if (creature.path && creature.path.length > 0) {
+    const progress = creature.pathProgress ?? 0;
+    const direction = creature.pathDirection ?? 1;
+
+    // Get next position along path
+    const nextIndex = progress + direction;
+
+    // Check if we've reached the end of the path
+    if (nextIndex < 0 || nextIndex >= creature.path.length) {
+      // Reverse direction
+      creature.pathDirection = (direction * -1) as 1 | -1;
+      // Swap home and target
+      const oldTarget = creature.targetLocationId;
+      creature.targetLocationId = creature.homeLocationId;
+      creature.homeLocationId = oldTarget;
+      return { dx: 0, dy: 0, behavior: 'trading' };
+    }
+
+    const nextPos = creature.path[nextIndex];
+    const dx = nextPos.x - creature.position.x;
+    const dy = nextPos.y - creature.position.y;
+
+    // Update progress
+    creature.pathProgress = nextIndex;
+
+    return { dx, dy, behavior: 'trading' };
+  }
+
+  // Fallback to simple movement if no path (shouldn't happen for traders)
   if (creature.targetLocationId) {
     const target = world.locations.get(creature.targetLocationId);
     if (target && !target.isDestroyed) {

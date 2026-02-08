@@ -17,6 +17,7 @@ export type JobType =
   | 'soldier'
   | 'guard'
   | 'hunter'
+  | 'shepherd'
   | 'herbalist'
   | 'scholar'
   | 'priest'
@@ -123,6 +124,9 @@ export interface Character {
   // Memory & flags
   knownLocationIds: string[];
   flags: Record<string, boolean>;
+
+  // Herding (for shepherds)
+  herdedCreatureIds: string[]; // IDs of sheep/livestock under their care
 }
 
 /** Possible character actions */
@@ -134,4 +138,5 @@ export type CharacterAction =
   | { type: 'fighting'; targetId: string }
   | { type: 'resting' }
   | { type: 'socializing'; targetId: string }
-  | { type: 'exploring' };
+  | { type: 'exploring' }
+  | { type: 'herding' };

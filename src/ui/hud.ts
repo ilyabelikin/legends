@@ -32,6 +32,8 @@ export class HUD {
   private logTotalLines = 0;
   /** Cached log panel bounds for hit testing */
   private logBounds = { x: 0, y: 0, w: 0, h: 0 };
+  /** Whether to show the inventory panel */
+  private showInventory = false;
 
   constructor(ctx: CanvasRenderingContext2D, engine: GameEngine) {
     this.ctx = ctx;
@@ -41,6 +43,11 @@ export class HUD {
   /** Give the HUD a reference to the renderer so it can move the camera */
   setRenderer(renderer: Renderer): void {
     this.renderer = renderer;
+  }
+
+  /** Toggle inventory panel visibility */
+  toggleInventory(): void {
+    this.showInventory = !this.showInventory;
   }
 
   /** Render all HUD elements */
@@ -53,6 +60,9 @@ export class HUD {
     this.renderBottomBar(state);
     this.renderTileInfo(state);
     this.renderPartyStatus(state);
+    if (this.showInventory) {
+      this.renderInventory(state);
+    }
   }
 
   /**
@@ -269,9 +279,15 @@ export class HUD {
     ctx.textAlign = 'center';
 
     // Build contextual action hints
-    const hints = ['WASD: Pan', 'Right-click: Move', 'SPACE: End Turn', 'R: Rest'];
+    const hints = ['WASD: Pan', 'Right-click: Move', 'SPACE: End Turn', 'R: Rest', 'I: Inventory'];
+    if (this.engine.canHunt()) {
+      hints.push('H: Hunt');
+    }
     if (this.engine.canBuyFood()) {
       hints.push('F: Buy Food');
+    }
+    if (this.engine.canSell()) {
+      hints.push('V: Sell');
     }
     if (this.engine.canEmbark()) {
       hints.push('B: Board Boat');
@@ -286,10 +302,9 @@ export class HUD {
 
     ctx.fillStyle = PALETTE.uiHighlight;
     ctx.textAlign = 'left';
-    ctx.fillText(
-      `Actions: ${state.party.actionPoints}/${state.party.maxActionPoints}`,
-      12, barY + 30,
-    );
+    const apText = `Actions: ${state.party.actionPoints}/${state.party.maxActionPoints}`;
+    console.log(`[HUD] Rendering: ${apText}, Turn: ${state.turn}`);
+    ctx.fillText(apText, 12, barY + 30);
 
     ctx.fillText(`Gold: ${state.party.gold}`, 200, barY + 30);
 
@@ -299,6 +314,13 @@ export class HUD {
       ctx.fillStyle = pct > 0.6 ? PALETTE.uiSafe : pct > 0.3 ? PALETTE.uiHighlight : PALETTE.uiDanger;
       ctx.fillText(`HP: ${Math.round(leader.health)}/${leader.maxHealth}`, 320, barY + 30);
     }
+
+    // Show inventory count and hint
+    ctx.fillStyle = PALETTE.uiHighlight;
+    const invText = state.party.inventory.length === 0 
+      ? 'Inventory: empty' 
+      : `Inventory: ${state.party.inventory.length} items`;
+    ctx.fillText(invText, 450, barY + 30);
 
     const tile = state.world.tiles[state.party.position.y]?.[state.party.position.x];
     if (tile?.locationId) {
@@ -386,6 +408,45 @@ export class HUD {
 
     ctx.fillStyle = PALETTE.uiText;
     ctx.fillText(`Combat: ${leader.skills['combat'] ?? 0} | Survival: ${leader.skills['survival'] ?? 0}`, panelX + 8, panelY + 88);
+  }
+
+  // ── Inventory Panel ─────────────────────────────────────
+
+  private renderInventory(state: GameState): void {
+    const { party } = state;
+
+    const ctx = this.ctx;
+    const panelWidth = 240;
+    const maxItems = 8;
+    const panelHeight = Math.min(party.inventory.length, maxItems) * 16 + 40;
+    const panelX = this.width - panelWidth - 12;
+    const panelY = this.height - panelHeight - 160;
+
+    ctx.fillStyle = 'rgba(10,10,20,0.85)';
+    ctx.fillRect(panelX, panelY, panelWidth, panelHeight);
+    ctx.strokeStyle = PALETTE.uiBorder;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(panelX, panelY, panelWidth, panelHeight);
+
+    ctx.fillStyle = PALETTE.uiHighlight;
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('INVENTORY', panelX + 8, panelY + 14);
+
+    let y = panelY + 30;
+    const itemsToShow = party.inventory.slice(0, maxItems);
+    for (const stack of itemsToShow) {
+      const qtyStr = (Math.round(stack.quantity * 10) / 10).toFixed(1);
+      const qualStr = (stack.quality * 100).toFixed(0);
+      ctx.fillStyle = '#b0a090';
+      ctx.fillText(`${stack.resourceId}: ${qtyStr} (${qualStr}%)`, panelX + 8, y);
+      y += 16;
+    }
+
+    if (party.inventory.length > maxItems) {
+      ctx.fillStyle = '#8a8070';
+      ctx.fillText(`... +${party.inventory.length - maxItems} more`, panelX + 8, y);
+    }
   }
 }
 

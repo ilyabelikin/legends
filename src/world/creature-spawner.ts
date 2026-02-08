@@ -5,8 +5,8 @@ import { generateDragonName } from '../data/name-data';
 import { SeededRandom, generateId } from '../utils/random';
 import { isWater } from './terrain-generator';
 
-/** Maximum creatures to spawn */
-const MAX_CREATURE_GROUPS = 60;
+/** Maximum creatures to spawn (scales with world size) */
+const MAX_CREATURE_GROUPS = 150;
 
 /** Minimum distance between creature groups */
 const MIN_CREATURE_DISTANCE = 5;

@@ -7,7 +7,8 @@ import { executeTrades, establishTradeRoutes, updateRouteDanger, spawnTraders } 
 import { decideCharacterAction, decideCreatureAction, DEFAULT_AI_CONFIG } from '../ai/decision-engine';
 import { generateWorldEvents } from '../ai/world-events';
 import { checkDirectWitness } from './news-system';
-import { checkDestruction, regenDurability, spawnGuards, spawnArmies, creatureCombatTick, disbandPeacetimeArmies } from './military-system';
+import { checkDestruction, tickBurningAndRegen, spawnGuards, spawnHunters, spawnArmies, creatureCombatTick, disbandPeacetimeArmies } from './military-system';
+import { tickShepherdGathering, tickHerdMovement, tickWoolProduction, tickSheepBreeding, tickHerdCleanup } from './herding-system';
 import { SeededRandom } from '../utils/random';
 import { isWater } from '../world/terrain-generator';
 import { clearTerrainSpriteCache } from '../render/sprites/terrain-sprites';
@@ -73,9 +74,45 @@ export function advanceTurn(state: GameState): void {
     state.worldEvents = state.worldEvents.filter(e => state.turn - e.turn < 80);
   }
 
-  // === 6. Military: guards, armies, creature combat, destruction ===
+  // === 6. Herding: shepherds gather, move, breed sheep, produce wool ===
+  const gatherEvents = tickShepherdGathering(state.world, rng.fork());
+  for (const evt of gatherEvents) {
+    evt.turn = state.turn;
+    state.worldEvents.push(evt);
+    if (checkDirectWitness(state, evt)) {
+      state.knownEventIds.add(evt.id);
+      addLog(state, evt.title, 'trade', evt.locationId ?? undefined);
+    }
+  }
+
+  tickHerdMovement(state.world);
+
+  const woolEvents = tickWoolProduction(state.world, state.turn);
+  for (const evt of woolEvents) {
+    state.worldEvents.push(evt);
+    if (checkDirectWitness(state, evt)) {
+      state.knownEventIds.add(evt.id);
+      addLog(state, evt.title, 'trade', evt.locationId ?? undefined);
+    }
+  }
+
+  if (state.turn % 3 === 0) {
+    const breedEvents = tickSheepBreeding(state.world, state.turn, rng.fork());
+    for (const evt of breedEvents) {
+      state.worldEvents.push(evt);
+      if (checkDirectWitness(state, evt)) {
+        state.knownEventIds.add(evt.id);
+        addLog(state, evt.title, 'info', evt.locationId ?? undefined);
+      }
+    }
+  }
+
+  tickHerdCleanup(state.world);
+
+  // === 7. Military: guards, hunters, armies, creature combat, destruction ===
   if (state.turn % 10 === 0) {
     spawnGuards(state.world, rng.fork());
+    spawnHunters(state.world, rng.fork());
   }
   if (state.turn % 5 === 0) {
     const armyEvents = spawnArmies(state, rng.fork());
@@ -98,7 +135,7 @@ export function advanceTurn(state: GameState): void {
     }
   }
 
-  regenDurability(state.world);
+  tickBurningAndRegen(state.world);
   const destructionEvents = checkDestruction(state);
   for (const evt of destructionEvents) {
     state.activeEvents.push(evt);
@@ -120,8 +157,10 @@ export function advanceTurn(state: GameState): void {
   }
 
   // === 9. Restore party action points ===
+  console.log(`[Turn ${state.turn}] Before restore: AP = ${state.party.actionPoints}`);
   state.party.maxActionPoints = 6;
   state.party.actionPoints = state.party.maxActionPoints;
+  console.log(`[Turn ${state.turn}] After restore: AP = ${state.party.actionPoints}`);
 
   // === 10. Prune old events ===
   state.activeEvents = state.activeEvents.filter(e =>
@@ -225,10 +264,98 @@ function tickCreatures(state: GameState, rng: SeededRandom): void {
     creature.age++;
   }
 
+  // Check for creatures that moved onto the party's position — initiate combat
+  checkCreaturePartyCollision(state, rng);
+
   // Remove dead creatures
   for (const [id, creature] of world.creatures) {
     if (creature.health <= 0) {
       world.creatures.delete(id);
+    }
+  }
+}
+
+/** Check if any hostile creatures moved onto the party's position and run combat */
+function checkCreaturePartyCollision(state: GameState, rng: SeededRandom): void {
+  const { party, world } = state;
+  const leader = party.members[0];
+  if (!leader) return;
+
+  const partyAttack = (leader.stats.strength + (leader.equippedWeapon?.attack ?? 0)) * 2;
+  const partyDefense = leader.stats.endurance + (leader.equippedArmor?.defense ?? 0);
+
+  for (const creature of world.creatures.values()) {
+    if (creature.health <= 0) continue;
+    if (!creature.isHostile) continue;
+
+    // Check if creature is on the same tile as the party
+    if (creature.position.x === party.position.x && creature.position.y === party.position.y) {
+      const label = creature.name ?? creature.type;
+
+      let partyHP = leader.health;
+      let creatureHP = creature.health;
+      let totalDmgDealt = 0;
+      let totalDmgTaken = 0;
+      let rounds = 0;
+
+      while (partyHP > 0 && creatureHP > 0 && rounds < 20) {
+        rounds++;
+        // Party attacks
+        const partyDmg = Math.max(1, partyAttack - creature.defense + rng.nextInt(-2, 2));
+        creatureHP -= partyDmg;
+        totalDmgDealt += partyDmg;
+
+        // Creature attacks
+        if (creatureHP > 0) {
+          const creatureDmg = Math.max(1, creature.attack - partyDefense + rng.nextInt(-2, 2));
+          partyHP -= creatureDmg;
+          totalDmgTaken += creatureDmg;
+        }
+      }
+
+      // Write back HP
+      creature.health = Math.max(0, creatureHP);
+      leader.health = Math.max(1, partyHP);
+
+      // Log result
+      if (creature.health <= 0) {
+        state.eventLog.push({
+          turn: state.turn,
+          message: `${label} attacked! You defeated it (${rounds} rounds, dealt ${Math.round(totalDmgDealt)} dmg).`,
+          type: 'combat',
+          locationId: null,
+        });
+        // Collect loot into party inventory
+        for (const loot of creature.loot) {
+          // Try to stack with existing
+          const existing = state.party.inventory.find(s => s.resourceId === loot.resourceId && Math.abs(s.quality - loot.quality) < 0.1);
+          if (existing) {
+            existing.quantity += loot.quantity;
+          } else {
+            state.party.inventory.push({ resourceId: loot.resourceId, quantity: loot.quantity, quality: loot.quality, age: 0 });
+          }
+          
+          state.eventLog.push({
+            turn: state.turn,
+            message: `Obtained ${(Math.round(loot.quantity * 10) / 10).toFixed(1)} ${loot.resourceId}.`,
+            type: 'info',
+            locationId: null,
+          });
+        }
+        // XP gain
+        leader.skills['combat'] = Math.min(100, (leader.skills['combat'] ?? 0) + 3);
+        // Remove creature immediately from world
+        world.creatures.delete(creature.id);
+      } else {
+        state.eventLog.push({
+          turn: state.turn,
+          message: `${label} attacked! Fought for ${rounds} rounds — dealt ${Math.round(totalDmgDealt)} dmg, took ${Math.round(totalDmgTaken)}.`,
+          type: 'combat',
+          locationId: null,
+        });
+        // Still gain some XP for surviving
+        leader.skills['combat'] = Math.min(100, (leader.skills['combat'] ?? 0) + 1);
+      }
     }
   }
 }

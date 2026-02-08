@@ -108,12 +108,12 @@ export class Renderer {
             const countryColor = world.countries.get(loc.countryId ?? '')?.color ?? null;
             this.renderLocation(ctx, loc, countryColor, tile.elevation);
 
-            // Burning overlay for low durability
-            if (!loc.isDestroyed && loc.durability < 30) {
-              this.renderBurning(ctx, tile, loc.durability);
+            // Burning overlay when on fire
+            if (!loc.isDestroyed && loc.burningTurns > 0) {
+              this.renderBurning(ctx, tile, loc.burningTurns);
             }
-            // Smoke for destroyed settlements
-            if (loc.isDestroyed) {
+            // Smoke for destroyed or recently burned settlements
+            if (loc.isDestroyed || (!loc.isDestroyed && loc.durability < 20)) {
               this.renderSmoke(ctx, tile);
             }
           }
@@ -127,7 +127,7 @@ export class Renderer {
       if (x >= range.minX && x <= range.maxX && y >= range.minY && y <= range.maxY) {
         const tile = world.tiles[y][x];
         if (tile.visible) {
-          this.renderCreature(ctx, creature, tile.elevation);
+          this.renderCreature(ctx, creature, tile.elevation, party.position);
         }
       }
     }
@@ -397,29 +397,38 @@ export class Renderer {
     ctx.fillRect(sx - 1, cy, 4, 1);
   }
 
-  /** Render fire overlay on a damaged settlement */
-  private renderBurning(ctx: CanvasRenderingContext2D, tile: Tile, durability: number): void {
+  /** Render fire overlay on a burning settlement */
+  private renderBurning(ctx: CanvasRenderingContext2D, tile: Tile, burningTurns: number): void {
     const sx = (tile.x - tile.y) * (TILE_WIDTH / 2);
     const sy = (tile.x + tile.y) * (TILE_HEIGHT / 2);
     const elevOffset = Math.floor(tile.elevation * 5) * ELEVATION_HEIGHT;
-    const intensity = 1 - durability / 30; // 0 at 30 durability, 1 at 0
+    const intensity = Math.min(1, burningTurns / 3); // stronger fire with more turns
 
-    // Animated fire flicker using time
     const t = this.animationTime * 4;
     const flicker = Math.sin(t) * 0.3 + 0.7;
 
     // Fire glow
-    ctx.fillStyle = `rgba(255,100,20,${(0.3 * intensity * flicker).toFixed(2)})`;
-    ctx.fillRect(sx - 10, sy - elevOffset - 20, 20, 12);
+    ctx.fillStyle = `rgba(255,100,20,${(0.4 * intensity * flicker).toFixed(2)})`;
+    ctx.fillRect(sx - 12, sy - elevOffset - 22, 24, 14);
 
-    // Fire particles
+    // Fire particles — more when burning hotter
+    const particleCount = Math.ceil(intensity * 5);
+    for (let i = 0; i < particleCount; i++) {
+      const fx = sx - 8 + i * 5 + Math.sin(t + i * 2.3) * 3;
+      const fy = sy - elevOffset - 28 - i * 3 + Math.cos(t + i * 1.7) * 2;
+      ctx.fillStyle = `rgba(255,200,40,${(0.6 * intensity * flicker).toFixed(2)})`;
+      ctx.fillRect(fx, fy, 3, 4);
+      ctx.fillStyle = `rgba(255,60,10,${(0.5 * intensity).toFixed(2)})`;
+      ctx.fillRect(fx + 1, fy + 3, 2, 2);
+    }
+
+    // Embers rising
     for (let i = 0; i < 3; i++) {
-      const fx = sx - 6 + i * 6 + Math.sin(t + i * 2) * 2;
-      const fy = sy - elevOffset - 25 - i * 4 + Math.cos(t + i) * 2;
-      ctx.fillStyle = `rgba(255,200,40,${(0.5 * intensity * flicker).toFixed(2)})`;
-      ctx.fillRect(fx, fy, 3, 3);
-      ctx.fillStyle = `rgba(255,80,10,${(0.4 * intensity).toFixed(2)})`;
-      ctx.fillRect(fx + 1, fy + 2, 2, 2);
+      const ex = sx - 4 + i * 4 + Math.sin(t * 1.5 + i * 3) * 5;
+      const ey = sy - elevOffset - 35 - ((t * 8 + i * 12) % 20);
+      const ea = Math.max(0, 0.5 - ((t + i * 2) % 4) * 0.15);
+      ctx.fillStyle = `rgba(255,180,50,${ea.toFixed(2)})`;
+      ctx.fillRect(ex, ey, 1, 1);
     }
   }
 
@@ -481,19 +490,47 @@ export class Renderer {
     ctx.drawImage(sprite, sx - 24, sy - elevOffset - 40);
 
     // Location name label — dimmed for ruins
-    ctx.fillStyle = loc.isDestroyed ? '#6a5a4a' : PALETTE.uiText;
     ctx.font = '7px monospace';
     ctx.textAlign = 'center';
     const label = loc.isDestroyed ? `${loc.name} (ruins)` : loc.name;
+    
+    // Add dark background for better readability on bright backgrounds
+    const textMetrics = ctx.measureText(label);
+    const textWidth = textMetrics.width;
+    const textHeight = 7; // font size
+    const padding = 2;
+    
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+    ctx.fillRect(
+      sx - textWidth / 2 - padding,
+      sy - elevOffset - 42 - textHeight + 1,
+      textWidth + padding * 2,
+      textHeight + padding
+    );
+    
+    // Text on top
+    ctx.fillStyle = loc.isDestroyed ? '#b0a090' : PALETTE.uiText;
     ctx.fillText(label, sx, sy - elevOffset - 42);
   }
 
   /** Render a creature */
-  private renderCreature(ctx: CanvasRenderingContext2D, creature: Creature, elevation: number): void {
+  private renderCreature(
+    ctx: CanvasRenderingContext2D,
+    creature: Creature,
+    elevation: number,
+    partyPos: { x: number; y: number }
+  ): void {
     const { x, y } = creature.position;
-    const sx = (x - y) * (TILE_WIDTH / 2);
-    const sy = (x + y) * (TILE_HEIGHT / 2);
+    let sx = (x - y) * (TILE_WIDTH / 2);
+    let sy = (x + y) * (TILE_HEIGHT / 2);
     const elevOffset = Math.floor(elevation * 5) * ELEVATION_HEIGHT;
+
+    // If creature is on the same tile as the party, offset it slightly to keep it visible
+    if (creature.position.x === partyPos.x && creature.position.y === partyPos.y) {
+      // Offset to the bottom-right corner of the tile
+      sx += 12;
+      sy += 6;
+    }
 
     const sprite = getCreatureSprite(creature.type);
     ctx.drawImage(sprite, sx - 8, sy - elevOffset - 16);

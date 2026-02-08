@@ -273,6 +273,10 @@ export function spawnTraders(world: World, rng: SeededRandom): void {
       countryId: from.countryId,
       targetLocationId: route.toLocationId,
       homeLocationId: route.fromLocationId,
+      // Store the trade route path for proper road-following
+      path: [...route.path],
+      pathProgress: 0,
+      pathDirection: 1, // 1 = forward, -1 = backward
     };
 
     world.creatures.set(id, trader);

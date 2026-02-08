@@ -46,14 +46,15 @@ export function generateWorldEvents(
         'major',
       ));
 
-      // Apply damage — including durability
-      nearest.durability = Math.max(0, nearest.durability - rng.nextInt(15, 30));
+      // Set on fire — burns for 3 turns, dealing ongoing durability damage
+      nearest.burningTurns = Math.max(nearest.burningTurns, 3);
+      nearest.durability = Math.max(0, nearest.durability - rng.nextInt(8, 15));
       nearest.defenseLevel = Math.max(0, nearest.defenseLevel - 2);
       nearest.safety = Math.max(0, nearest.safety - 30);
       nearest.happiness = Math.max(0, nearest.happiness - 20);
       nearest.prosperity = Math.max(0, nearest.prosperity - 15);
 
-      // Damage buildings
+      // Damage buildings from initial strike
       for (const building of nearest.buildings) {
         if (rng.chance(0.3)) {
           building.condition = Math.max(0, building.condition - rng.nextInt(20, 50));

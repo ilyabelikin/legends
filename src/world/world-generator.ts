@@ -23,8 +23,8 @@ export interface WorldGenConfig {
 
 /** Default config */
 export const DEFAULT_WORLD_CONFIG: WorldGenConfig = {
-  width: 128,
-  height: 128,
+  width: 256,
+  height: 256,
   seed: Date.now(),
 };
 

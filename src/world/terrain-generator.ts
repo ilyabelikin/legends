@@ -66,32 +66,47 @@ export function generateElevation(
       // Map from [-1,1] to [0,1]
       e = (e + 1) / 2;
 
-      // Apply island mask — create multiple landmasses
-      const cx = nx - 0.5;
-      const cy = ny - 0.5;
-      const distFromCenter = Math.sqrt(cx * cx + cy * cy) * 2;
+      // Apply island masks — create multiple landmasses
+      // Main continent (northwest)
+      const cx1 = nx - 0.35;
+      const cy1 = ny - 0.35;
+      const dist1 = Math.sqrt(cx1 * cx1 + cy1 * cy1) * 2.2;
+      const coastNoise1 = noise.noise2D(nx * 2, ny * 2) * 0.15;
+      const mask1 = 1 - Math.pow(clamp(dist1 + coastNoise1, 0, 1), 1.8);
+      e = e * mask1;
 
-      // Use noise to create irregular coastline
-      const coastNoise = noise.noise2D(nx * 2, ny * 2) * 0.15;
-      const mask = 1 - Math.pow(clamp(distFromCenter + coastNoise, 0, 1), 1.8);
+      // Second continent (southeast) — larger and distinct
+      const cx2 = nx - 0.65;
+      const cy2 = ny - 0.70;
+      const dist2 = Math.sqrt(cx2 * cx2 + cy2 * cy2) * 2.5;
+      const coastNoise2 = noise.noise2D(nx * 2.3 + 7, ny * 2.3 + 7) * 0.18;
+      const mask2 = 1 - Math.pow(clamp(dist2 + coastNoise2, 0, 1), 1.6);
+      const continent2 = noise.fbm(nx * 4 + 10, ny * 4 + 10, 4) * 0.5 + 0.5;
+      e = Math.max(e, continent2 * mask2 * 0.75);
 
-      e = e * mask;
-
-      // Add secondary continent
-      const cx2 = nx - 0.25;
-      const cy2 = ny - 0.7;
-      const dist2 = Math.sqrt(cx2 * cx2 + cy2 * cy2) * 3;
-      const mask2 = 1 - Math.pow(clamp(dist2, 0, 1), 2);
-      const secondaryContinent = noise.fbm(nx * 4 + 10, ny * 4 + 10, 4) * 0.5 + 0.5;
-      e = Math.max(e, secondaryContinent * mask2 * 0.7);
-
-      // Third island chain
+      // Island chain (northeast)
       const cx3 = nx - 0.75;
-      const cy3 = ny - 0.3;
-      const dist3 = Math.sqrt(cx3 * cx3 + cy3 * cy3) * 4;
-      const mask3 = 1 - Math.pow(clamp(dist3, 0, 1), 2.5);
-      const islandNoise = noise.fbm(nx * 5 + 20, ny * 5 + 20, 3) * 0.5 + 0.5;
-      e = Math.max(e, islandNoise * mask3 * 0.55);
+      const cy3 = ny - 0.25;
+      const dist3 = Math.sqrt(cx3 * cx3 + cy3 * cy3) * 5;
+      const mask3 = 1 - Math.pow(clamp(dist3, 0, 1), 2.8);
+      const islands1 = noise.fbm(nx * 5 + 20, ny * 5 + 20, 3) * 0.5 + 0.5;
+      e = Math.max(e, islands1 * mask3 * 0.58);
+
+      // Scattered islands (central ocean)
+      const cx4 = nx - 0.55;
+      const cy4 = ny - 0.50;
+      const dist4 = Math.sqrt(cx4 * cx4 + cy4 * cy4) * 6;
+      const mask4 = 1 - Math.pow(clamp(dist4, 0, 1), 3);
+      const islands2 = noise.fbm(nx * 6 + 40, ny * 6 + 40, 3) * 0.5 + 0.5;
+      e = Math.max(e, islands2 * mask4 * 0.50);
+
+      // Small archipelago (southwest)
+      const cx5 = nx - 0.20;
+      const cy5 = ny - 0.80;
+      const dist5 = Math.sqrt(cx5 * cx5 + cy5 * cy5) * 7;
+      const mask5 = 1 - Math.pow(clamp(dist5, 0, 1), 3.5);
+      const islands3 = noise.fbm(nx * 7 + 60, ny * 7 + 60, 2) * 0.5 + 0.5;
+      e = Math.max(e, islands3 * mask5 * 0.45);
 
       elevation[y][x] = clamp(e, 0, 1);
     }

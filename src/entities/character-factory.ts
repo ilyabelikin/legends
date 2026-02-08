@@ -84,6 +84,7 @@ export function createCharacter(
     ownedLocationIds: [],
     knownLocationIds: homeLocationId ? [homeLocationId] : [],
     flags: {},
+    herdedCreatureIds: [],
   };
 
   return character;
@@ -114,6 +115,7 @@ function generateStats(rng: SeededRandom, job: JobType): CharacterStats {
   switch (job) {
     case 'farmer': stats.strength += 2; stats.endurance += 2; break;
     case 'miner': stats.strength += 3; stats.endurance += 2; break;
+    case 'shepherd': stats.endurance += 2; stats.charisma += 1; break;
     case 'blacksmith': stats.strength += 3; stats.dexterity += 1; break;
     case 'soldier': stats.strength += 2; stats.dexterity += 2; stats.endurance += 2; break;
     case 'hunter': stats.dexterity += 3; stats.endurance += 1; break;

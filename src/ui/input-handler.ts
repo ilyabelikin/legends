@@ -62,13 +62,18 @@ export class InputHandler {
   // ── Keyboard ──────────────────────────────────────────
 
   private onKeyDown(e: KeyboardEvent): void {
+    console.log(`[InputHandler] Key pressed: "${e.key}"`);
     this.keysDown.add(e.key.toLowerCase());
     const state = this.engine.state;
-    if (!state || state.gameOver) return;
+    if (!state || state.gameOver) {
+      console.log(`[InputHandler] No state or game over, ignoring key`);
+      return;
+    }
 
     switch (e.key) {
       // End turn
       case 'Enter': case ' ':
+        console.log(`[InputHandler] Space/Enter detected, calling endTurn()`);
         e.preventDefault();
         this.engine.cancelMovement();
         this.engine.endTurn();
@@ -92,6 +97,25 @@ export class InputHandler {
       case 'f': case 'F':
         this.engine.cancelMovement();
         this.tryBuyFood();
+        break;
+
+      // Hunt wild game
+      case 'h': case 'H':
+        this.engine.cancelMovement();
+        this.engine.hunt();
+        break;
+
+      // Sell inventory at marketplace
+      case 'v': case 'V':
+        this.engine.cancelMovement();
+        this.engine.sellInventory();
+        break;
+
+      // Toggle inventory panel
+      case 'i': case 'I':
+        if (this.hud) {
+          this.hud.toggleInventory();
+        }
         break;
 
       // Embark / disembark at pier
@@ -261,9 +285,10 @@ export class InputHandler {
     }
 
     if (preview.isExpensive) {
+      const stock = (Math.round(preview.stock * 10) / 10).toFixed(1);
       const ok = confirm(
         `⚠ Price is high!\n\n` +
-        `${preview.foodId} costs ${preview.price}g (only ${preview.stock} left in ${preview.locName}).\n\n` +
+        `${preview.foodId} costs ${preview.price}g (only ${stock} left in ${preview.locName}).\n\n` +
         `Buy anyway?`
       );
       if (!ok) {

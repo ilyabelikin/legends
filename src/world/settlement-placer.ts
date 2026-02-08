@@ -10,8 +10,8 @@ import { generateSettlementName } from '../data/name-data';
 /** Minimum distance between settlements */
 const MIN_SETTLEMENT_DISTANCE = 6;
 
-/** Maximum settlements to generate */
-const MAX_SETTLEMENTS = 40;
+/** Maximum settlements to generate (scales with world size) */
+const MAX_SETTLEMENTS = 120;
 
 /** Score a tile for settlement desirability */
 function scoreTileForSettlement(tile: Tile, tiles: Tile[][], width: number, height: number): number {
@@ -260,6 +260,7 @@ export function placeSettlements(
       growthPoints: 0,
       durability: finalType === 'town' ? 80 : finalType === 'village' ? 60 : finalType === 'city' ? 100 : 40,
       originalType: null,
+      burningTurns: 0,
     };
 
     locations.set(id, location);

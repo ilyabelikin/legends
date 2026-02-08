@@ -107,6 +107,8 @@ export interface Location {
   growthPoints: number;      // accumulates toward next tier
   durability: number;        // 0–100, settlement HP — 0 = destroyed
   originalType: LocationType | null; // what it was before being destroyed
+  /** Turns remaining of burning status (dragon fire etc.) */
+  burningTurns: number;
 }
 
 /** Thresholds for location growth */

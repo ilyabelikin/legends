@@ -11,7 +11,8 @@ export type CreatureType =
   | 'bandit'
   | 'guard'
   | 'army'
-  | 'trader';
+  | 'trader'
+  | 'hunter';
 
 /** Behavior patterns for creatures */
 export type CreatureBehavior =
@@ -50,6 +51,18 @@ export interface Creature {
   targetLocationId: string | null;
   /** Settlement that spawned this creature (guards) */
   homeLocationId: string | null;
+  /** Path to follow (for traders, using trade routes) */
+  path?: { x: number; y: number }[];
+  /** Current progress along path (for traders) */
+  pathProgress?: number;
+  /** Direction along path (for traders, 1 = forward, -1 = backward) */
+  pathDirection?: 1 | -1;
+  /** Shepherd who owns this creature (for herded sheep) */
+  ownerId?: string | null;
+  /** Last turn wool was produced (for sheep) */
+  lastWoolProduction?: number;
+  /** Breeding cooldown (turns until can breed again) */
+  breedingCooldown?: number;
 }
 
 /** Static definition for a creature type */

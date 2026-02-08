@@ -17,6 +17,7 @@ import { findPath } from '../utils/pathfinding';
 import { getMovementCost, getMovementPointCost } from '../utils/movement-cost';
 import { discoverNewsAtSettlement } from './news-system';
 import { createCharacter } from '../entities/character-factory';
+import { formatQuantity } from '../utils/format';
 
 /**
  * The main game engine. Manages state and player interactions.
@@ -236,7 +237,9 @@ export class GameEngine {
       this.addLog('Not enough action points. End your turn.', 'system');
       return false;
     }
+    console.log(`[moveParty] Consuming ${cost} AP (before: ${party.actionPoints})`);
     party.actionPoints -= cost;
+    console.log(`[moveParty] After: ${party.actionPoints} AP`);
 
     // === Handle sailing state transitions ===
     if (party.isSailing && !water && !pier) {
@@ -416,7 +419,11 @@ export class GameEngine {
 
   /** End the player's turn and advance the world */
   endTurn(): void {
+    console.log(`[endTurn] Before advance: AP = ${this.state.party.actionPoints}`);
+    // Clear queued movement so player starts fresh next turn
+    this.state.party.queuedPath = [];
     advanceTurn(this.state);
+    console.log(`[endTurn] After advance: AP = ${this.state.party.actionPoints}`);
   }
 
   /** Rest — costs 2 AP. Better healing at settlements. */
@@ -540,7 +547,7 @@ export class GameEngine {
         }
 
         const remaining = loc.storage.find(s => s.resourceId === foodId)?.quantity ?? 0;
-        this.addLog(`Bought ${foodId} for ${price}g in ${loc.name} (${remaining} left).`, 'trade', loc.id);
+        this.addLog(`Bought ${foodId} for ${price}g in ${loc.name} (${formatQuantity(remaining)} left).`, 'trade', loc.id);
         return true;
       }
     }
@@ -558,6 +565,159 @@ export class GameEngine {
     return loc.buildings.some(
       b => b.isOperational && (b.type === 'market' || b.type === 'tavern' || b.type === 'dock'),
     );
+  }
+
+  /** Check if party can hunt (standing on a wild animal) */
+  canHunt(): boolean {
+    const { party, world } = this.state;
+    if (party.actionPoints < 2) return false;
+    
+    for (const creature of world.creatures.values()) {
+      if (creature.position.x === party.position.x && creature.position.y === party.position.y) {
+        // Can hunt passive game animals
+        if (creature.type === 'deer' || creature.type === 'sheep' || creature.type === 'boar') {
+          return creature.health > 0;
+        }
+      }
+    }
+    return false;
+  }
+
+  /** Hunt a wild animal at the party's position */
+  hunt(): boolean {
+    const { party, world } = this.state;
+    const leader = party.members[0];
+    if (!leader) return false;
+
+    if (party.actionPoints < 2) {
+      this.addLog('Not enough action points to hunt.', 'system');
+      return false;
+    }
+
+    // Find huntable creature at position
+    let target: Creature | null = null;
+    for (const creature of world.creatures.values()) {
+      if (creature.position.x === party.position.x && creature.position.y === party.position.y) {
+        if ((creature.type === 'deer' || creature.type === 'sheep' || creature.type === 'boar') && creature.health > 0) {
+          target = creature;
+          break;
+        }
+      }
+    }
+
+    if (!target) {
+      this.addLog('No wild game to hunt here.', 'system');
+      return false;
+    }
+
+    party.actionPoints -= 2;
+    const label = target.name ?? target.type;
+
+    // Hunting is milder than combat - takes a few rounds, low damage to party
+    const huntingSkill = leader.skills['hunting'] ?? 0;
+    const partyAttack = (leader.stats.strength + (leader.equippedWeapon?.attack ?? 0)) + huntingSkill / 10;
+    
+    let rounds = 0;
+    let totalDmg = 0;
+    let damageTaken = 0;
+
+    while (target.health > 0 && rounds < 10) {
+      rounds++;
+      const dmg = Math.max(1, Math.floor(partyAttack - target.defense / 2 + Math.random() * 3));
+      target.health -= dmg;
+      totalDmg += dmg;
+
+      // Wild animals fight back a little (much less than combat)
+      if (target.health > 0 && Math.random() < 0.3) {
+        const animalDmg = Math.max(1, Math.floor(target.attack / 3 + Math.random() * 2));
+        leader.health -= animalDmg;
+        damageTaken += animalDmg;
+      }
+    }
+
+    if (target.health <= 0) {
+      // Collect loot into party inventory
+      for (const loot of target.loot) {
+        this.addToPartyInventory(loot.resourceId, loot.quantity, loot.quality);
+        this.addLog(`Hunted ${label}! Obtained ${formatQuantity(loot.quantity)} ${loot.resourceId}.`, 'info');
+      }
+      
+      // Gain hunting skill
+      leader.skills['hunting'] = Math.min(100, (leader.skills['hunting'] ?? 0) + 2);
+      
+      if (damageTaken > 0) {
+        this.addLog(`Hunt successful (took ${Math.round(damageTaken)} dmg).`, 'info');
+      }
+      
+      // Remove creature immediately from world
+      world.creatures.delete(target.id);
+    } else {
+      this.addLog(`Hunt failed - ${label} escaped!`, 'info');
+    }
+
+    return true;
+  }
+
+  /** Add resources to party inventory (stacking logic) */
+  private addToPartyInventory(resourceId: string, quantity: number, quality: number): void {
+    const { party } = this.state;
+    
+    // Try to stack with existing
+    const existing = party.inventory.find(s => s.resourceId === resourceId && Math.abs(s.quality - quality) < 0.1);
+    if (existing) {
+      existing.quantity += quantity;
+    } else {
+      party.inventory.push({ resourceId, quantity, quality, age: 0 });
+    }
+  }
+
+  /** Check if party can sell at marketplace */
+  canSell(): boolean {
+    const tile = this.state.world.tiles[this.state.party.position.y]?.[this.state.party.position.x];
+    if (!tile?.locationId) return false;
+    const loc = this.state.world.locations.get(tile.locationId);
+    if (!loc || loc.isDestroyed) return false;
+    return loc.buildings.some(b => b.isOperational && b.type === 'market') && this.state.party.inventory.length > 0;
+  }
+
+  /** Sell all inventory at current marketplace */
+  sellInventory(): boolean {
+    const { party, world } = this.state;
+    const tile = world.tiles[party.position.y]?.[party.position.x];
+    if (!tile?.locationId) return false;
+    
+    const loc = world.locations.get(tile.locationId);
+    if (!loc || loc.isDestroyed) return false;
+
+    const hasMarket = loc.buildings.some(b => b.isOperational && b.type === 'market');
+    if (!hasMarket) {
+      this.addLog('No marketplace here.', 'system');
+      return false;
+    }
+
+    if (party.inventory.length === 0) {
+      this.addLog('Nothing to sell.', 'system');
+      return false;
+    }
+
+    party.actionPoints -= 1;
+    let totalGold = 0;
+
+    for (const stack of party.inventory) {
+      const def = RESOURCE_DEFINITIONS[stack.resourceId];
+      if (def) {
+        const price = loc.marketPrices[stack.resourceId] ?? def.baseValue;
+        const value = Math.floor(stack.quantity * price * stack.quality);
+        totalGold += value;
+        this.addLog(`Sold ${formatQuantity(stack.quantity)} ${stack.resourceId} for ${value}g.`, 'trade', loc.id);
+      }
+    }
+
+    party.gold += totalGold;
+    party.inventory = []; // Clear inventory
+    this.addLog(`Total earned: ${totalGold}g.`, 'trade', loc.id);
+
+    return true;
   }
 
   /** Check whether the party is at any settlement (for rest display) */
@@ -634,16 +794,19 @@ export class GameEngine {
     leader.health = Math.max(1, partyHP);
 
     if (creature.health <= 0) {
-      this.addLog(`You defeated ${label}! (${rounds} rounds, dealt ${totalDmgDealt} dmg)`, 'combat');
-      // Collect loot
+      this.addLog(`You defeated ${label}! (${rounds} rounds, dealt ${Math.round(totalDmgDealt)} dmg)`, 'combat');
+      // Collect loot into party inventory
       for (const loot of creature.loot) {
-        this.addLog(`Obtained ${Math.round(loot.quantity)} ${loot.resourceId}.`, 'info');
+        this.addToPartyInventory(loot.resourceId, loot.quantity, loot.quality);
+        this.addLog(`Obtained ${formatQuantity(loot.quantity)} ${loot.resourceId}.`, 'info');
       }
       // XP gain
       leader.skills['combat'] = Math.min(100, (leader.skills['combat'] ?? 0) + 3);
+      // Remove creature immediately from world
+      this.state.world.creatures.delete(creature.id);
     } else {
       this.addLog(
-        `Fought ${label} for ${rounds} rounds — dealt ${totalDmgDealt} dmg, took ${totalDmgTaken}. ` +
+        `Fought ${label} for ${rounds} rounds — dealt ${Math.round(totalDmgDealt)} dmg, took ${Math.round(totalDmgTaken)}. ` +
         `${label} has ${Math.round(creature.health)}/${creature.maxHealth} HP left.`,
         'combat',
       );
@@ -717,7 +880,7 @@ export class GameEngine {
     info.push(`Elevation: ${Math.round(tile.elevation * 100)}%`);
 
     if (tile.resourceDeposit) {
-      info.push(`Resource: ${tile.resourceDeposit.resourceId} (${Math.round(tile.resourceDeposit.amount)})`);
+      info.push(`Resource: ${tile.resourceDeposit.resourceId} (${formatQuantity(tile.resourceDeposit.amount)})`);
     }
 
     if (tile.locationId) {
@@ -741,7 +904,7 @@ export class GameEngine {
           info.push(`Stock:`);
           for (const g of goods) {
             const price = loc.marketPrices[g.resourceId] ?? '?';
-            info.push(`  ${g.resourceId}: ${Math.round(g.quantity)} (${price}g)`);
+            info.push(`  ${g.resourceId}: ${formatQuantity(g.quantity)} (${price}g)`);
           }
         }
       }

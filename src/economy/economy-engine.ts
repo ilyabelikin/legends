@@ -258,8 +258,13 @@ function tickConsumption(loc: Location, world: World): void {
   const foodNeeded = popCount * rate;
   let foodConsumed = 0;
 
-  // Consume food — prefer processed, keep small reserve for trade
-  const foodPriority = ['bread', 'meat', 'fish', 'berries', 'wheat', 'exotic_fruit'];
+  // Consume food — wealthier locations prefer meat, poorer locations prefer cheaper foods
+  // Cities, castles, ports: wealthy citizens prefer meat, fish, exotic foods
+  // Villages, hamlets, farms: common folk prefer bread, berries, basic foods
+  const wealthyLocations = ['city', 'castle', 'port', 'town'];
+  const foodPriority = wealthyLocations.includes(loc.type)
+    ? ['meat', 'exotic_fruit', 'fish', 'bread', 'berries', 'wheat']  // wealthy prefer meat first
+    : ['bread', 'berries', 'wheat', 'fish', 'meat', 'exotic_fruit']; // common folk prefer cheap food first
 
   for (const foodId of foodPriority) {
     if (foodConsumed >= foodNeeded) break;

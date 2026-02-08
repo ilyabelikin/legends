@@ -298,6 +298,54 @@ export const PRODUCTION_RECIPES: ProductionRecipe[] = [
     minimumSkillLevel: 0,
     description: 'Gather medicinal herbs from the wild.',
   },
+
+  // Hunt deer
+  {
+    id: 'hunt_deer',
+    name: 'Hunt Deer',
+    buildingType: 'hunter_lodge',
+    inputs: [],
+    outputs: [
+      { resourceId: 'meat', quantity: 3, baseQuality: 0.7 },
+      { resourceId: 'hides', quantity: 1, baseQuality: 0.6 },
+    ],
+    duration: 3,
+    skillRequired: 'hunting',
+    minimumSkillLevel: 0,
+    description: 'Track and hunt wild deer for meat and hides.',
+  },
+
+  // Hunt boar
+  {
+    id: 'hunt_boar',
+    name: 'Hunt Boar',
+    buildingType: 'hunter_lodge',
+    inputs: [],
+    outputs: [
+      { resourceId: 'meat', quantity: 4, baseQuality: 0.6 },
+      { resourceId: 'hides', quantity: 1, baseQuality: 0.5 },
+    ],
+    duration: 2,
+    skillRequired: 'hunting',
+    minimumSkillLevel: 0,
+    description: 'Hunt wild boar for meat and hides.',
+  },
+
+  // Hunt sheep (for settlements with nearby sheep)
+  {
+    id: 'hunt_sheep',
+    name: 'Hunt Sheep',
+    buildingType: 'hunter_lodge',
+    inputs: [],
+    outputs: [
+      { resourceId: 'meat', quantity: 2, baseQuality: 0.6 },
+      { resourceId: 'wool', quantity: 1, baseQuality: 0.5 },
+    ],
+    duration: 1,
+    skillRequired: 'hunting',
+    minimumSkillLevel: 0,
+    description: 'Hunt wild sheep for meat and wool.',
+  },
 ];
 
 /** Lookup recipe by ID */

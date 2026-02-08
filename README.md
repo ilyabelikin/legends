@@ -15,29 +15,40 @@ Open `http://localhost:3000` in your browser.
 
 | Key               | Action                                             |
 | ----------------- | -------------------------------------------------- |
-| **W/A/S/D/Q/E**   | Move party (isometric directions: NW/W/SE/E/SW/NE) |
-| **Arrow Keys**    | Move party (N/W/S/E)                               |
+| **WASD/Arrows**   | Pan camera (explore the map)                       |
+| **Right-click**   | Move party to location (pathfinding)               |
+| **Left-click**    | Select tile for info                               |
 | **Enter / Space** | End turn (advance world simulation)                |
 | **R**             | Rest (heal at settlements, camp in wilderness)     |
+| **H**             | Hunt wild game (deer, sheep, boar)                 |
 | **F**             | Buy food at a settlement                           |
+| **I**             | Toggle inventory panel                             |
+| **V**             | Sell inventory at marketplace                      |
+| **B**             | Board/disembark boat at pier                       |
 | **C**             | Center camera on party                             |
 | **+/-**           | Zoom in/out                                        |
 | **P**             | Pause simulation                                   |
-| **Mouse Drag**    | Pan camera                                         |
-| **Scroll Wheel**  | Zoom                                               |
-| **Click**         | Select tile for info                               |
+| **Scroll Wheel**  | Zoom / Scroll event log                            |
 
 ## World Generation
 
 The world is procedurally generated in layers:
 
-1. **Terrain & Elevation** — Simplex noise creates continents, mountains, and ocean basins
+1. **Terrain & Elevation** — Simplex noise creates two major continents, multiple island chains, and ocean basins across a 256×256 tile world (3× larger than before)
+   - **Northwest Continent** — Main landmass with varied elevation
+   - **Southeast Continent** — Secondary large landmass separated by ocean
+   - **Northeast Islands** — Chain of medium-sized islands
+   - **Central Ocean Islands** — Scattered smaller islands between continents
+   - **Southwest Archipelago** — Small island group
 2. **Temperature** — Based on latitude and elevation
 3. **Moisture** — Noise + proximity to water bodies
 4. **Biomes** — Classified from elevation, moisture, and temperature (13 biome types)
 5. **Resources** — Placed according to biome suitability
-6. **Settlements** — Scored and placed based on resource access, water proximity, and terrain
-7. **Roads** — A\* pathfinding connects settlements with paths, roads, and highways
+6. **Settlements** — Scored and placed based on resource access, water proximity, and terrain (~120 settlements)
+7. **Roads** — Minimum Spanning Tree algorithm connects settlements efficiently
+8. **Piers** — Automatically placed at coastal and island settlements for boat access
+9. **Politics** — Countries, rulers, and diplomatic relations (~15 countries)
+10. **Creatures** — Wildlife, bandits, dragons, guards, armies (~150 creature groups)
 8. **Population** — Families created with jobs, skills, relationships
 9. **Creatures** — Wildlife and monsters placed by biome
 10. **Politics** — Countries formed, rulers assigned, diplomacy established

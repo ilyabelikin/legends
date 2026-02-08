@@ -9,6 +9,7 @@ import { SeededRandom, generateId } from '../utils/random';
 import { manhattanDist, inBounds } from '../utils/math';
 import { isWater } from '../world/terrain-generator';
 import { generateCountryName } from '../data/name-data';
+import { addToStorage } from '../economy/economy-engine';
 
 // ── Location Durability & Destruction ───────────────────
 
@@ -58,15 +59,33 @@ export function checkDestruction(state: GameState): GameEvent[] {
 }
 
 /**
- * Slowly regenerate durability for settlements that have
- * resources and workers.
+ * Tick burning status and regenerate durability.
+ * Burning locations lose durability each turn until the fire goes out.
+ * Non-burning locations slowly regenerate if they have workers and materials.
  */
-export function regenDurability(world: World): void {
+export function tickBurningAndRegen(world: World): void {
   for (const loc of world.locations.values()) {
     if (loc.isDestroyed) continue;
+
+    // === Burning: ongoing fire damage ===
+    if (loc.burningTurns > 0) {
+      loc.burningTurns--;
+      loc.durability = Math.max(0, loc.durability - 5);
+      loc.happiness = Math.max(0, loc.happiness - 5);
+
+      // Fire damages random buildings
+      for (const building of loc.buildings) {
+        if (Math.random() < 0.15) {
+          building.condition = Math.max(0, building.condition - 10);
+          if (building.condition <= 0) building.isOperational = false;
+        }
+      }
+      continue; // no regen while burning
+    }
+
+    // === Regen (only when not burning) ===
     if (loc.durability >= 100) continue;
 
-    // Regen if population > 2 and has some wood/stone
     const hasWorkers = loc.residentIds.length >= 2;
     const hasWood = loc.storage.some(s => s.resourceId === 'wood' && s.quantity > 0);
     const hasStone = loc.storage.some(s => s.resourceId === 'stone' && s.quantity > 0);
@@ -78,6 +97,63 @@ export function regenDurability(world: World): void {
     if (loc.wallLevel > 0) regen += 0.1 * loc.wallLevel;
 
     loc.durability = Math.min(100, loc.durability + regen);
+  }
+}
+
+// ── Hunter Spawning ─────────────────────────────────────
+
+/** Maximum hunters per settlement */
+const MAX_HUNTERS_PER_SETTLEMENT = 2;
+
+/**
+ * Spawn hunters from settlements with hunter_lodge.
+ * Hunters track and kill wild game for meat and hides.
+ */
+export function spawnHunters(world: World, rng: SeededRandom): void {
+  for (const loc of world.locations.values()) {
+    if (loc.isDestroyed) continue;
+
+    const hasHunterLodge = loc.buildings.some(b => b.type === 'hunter_lodge' && b.isOperational);
+    if (!hasHunterLodge) continue;
+
+    // Count existing hunters for this settlement
+    let hunterCount = 0;
+    for (const c of world.creatures.values()) {
+      if (c.type === 'hunter' && c.homeLocationId === loc.id && c.health > 0) {
+        hunterCount++;
+      }
+    }
+
+    if (hunterCount >= MAX_HUNTERS_PER_SETTLEMENT) continue;
+
+    // Spawn a hunter
+    const def = CREATURE_DEFINITIONS['hunter'];
+    const packSize = rng.nextInt(def.packSize[0], def.packSize[1]);
+    const id = generateId('creature');
+
+    const hunter: Creature = {
+      id,
+      type: 'hunter',
+      name: null,
+      position: { ...loc.position },
+      health: def.baseHealth * packSize,
+      maxHealth: def.baseHealth * packSize,
+      attack: def.baseAttack * Math.sqrt(packSize),
+      defense: def.baseDefense * Math.sqrt(packSize),
+      speed: def.baseSpeed,
+      behavior: 'hunting',
+      homePosition: { ...loc.position },
+      wanderRadius: def.wanderRadius,
+      isHostile: false,
+      loot: [],
+      age: 0,
+      lastActionTurn: 0,
+      countryId: loc.countryId,
+      targetLocationId: null,
+      homeLocationId: loc.id,
+    };
+
+    world.creatures.set(id, hunter);
   }
 }
 
@@ -259,14 +335,30 @@ export function creatureCombatTick(state: GameState, rng: SeededRandom): GameEve
   for (const [, group] of byTile) {
     if (group.length < 2) continue;
 
-    // Guards vs bandits
+    // Guards vs hostile creatures (bandits, dragons, enemy armies)
     const guards = group.filter(c => c.type === 'guard' && c.health > 0);
-    const bandits = group.filter(c => c.type === 'bandit' && c.health > 0);
+    const threats = group.filter(c =>
+      c.health > 0 && (
+        c.type === 'bandit' ||
+        c.type === 'dragon' ||
+        (c.type === 'army' && guards.length > 0 && c.countryId !== guards[0].countryId)
+      )
+    );
 
     for (const guard of guards) {
-      for (const bandit of bandits) {
-        if (guard.health <= 0 || bandit.health <= 0) continue;
-        const result = creatureFight(guard, bandit, rng);
+      for (const threat of threats) {
+        if (guard.health <= 0 || threat.health <= 0) continue;
+        const result = creatureFight(guard, threat, rng);
+        if (result) events.push(result);
+      }
+    }
+
+    // Dragon vs dragon — territorial fights when two dragons meet
+    const dragons = group.filter(c => c.type === 'dragon' && c.health > 0);
+    for (let i = 0; i < dragons.length; i++) {
+      for (let j = i + 1; j < dragons.length; j++) {
+        if (dragons[i].health <= 0 || dragons[j].health <= 0) continue;
+        const result = creatureFight(dragons[i], dragons[j], rng);
         if (result) events.push(result);
       }
     }
@@ -278,6 +370,41 @@ export function creatureCombatTick(state: GameState, rng: SeededRandom): GameEve
         if (armies[i].countryId === armies[j].countryId) continue; // same side
         if (armies[i].health <= 0 || armies[j].health <= 0) continue;
         const result = creatureFight(armies[i], armies[j], rng);
+        if (result) events.push(result);
+      }
+    }
+
+    // Hunter vs prey (deer, sheep, boar)
+    const hunters = group.filter(c => c.type === 'hunter' && c.health > 0);
+    const prey = group.filter(c =>
+      c.health > 0 && (c.type === 'deer' || c.type === 'sheep' || c.type === 'boar')
+    );
+
+    for (const hunter of hunters) {
+      for (const animal of prey) {
+        if (hunter.health <= 0 || animal.health <= 0) continue;
+        const result = creatureFight(hunter, animal, rng);
+        if (result && animal.health <= 0) {
+          // Transfer animal loot to hunter's home settlement
+          const homeLoc = hunter.homeLocationId ? world.locations.get(hunter.homeLocationId) : null;
+          if (homeLoc && !homeLoc.isDestroyed) {
+            for (const loot of animal.loot) {
+              addToStorage(homeLoc, loot.resourceId, loot.quantity, loot.quality);
+            }
+            events.push({
+              id: generateId('evt'),
+              type: 'trade', // reusing type
+              turn: state.turn,
+              title: `Hunters return with game at ${homeLoc.name}`,
+              description: `Hunters brought back ${animal.loot.map(l => `${Math.round(l.quantity)} ${l.resourceId}`).join(', ')}.`,
+              locationId: homeLoc.id,
+              characterIds: [],
+              isResolved: false,
+              effects: [],
+              severity: 'minor',
+            });
+          }
+        }
         if (result) events.push(result);
       }
     }
