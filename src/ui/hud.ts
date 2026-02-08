@@ -73,8 +73,17 @@ export class HUD {
   }
 
   /** Toggle inventory panel visibility */
-  toggleInventory(): void {
+  toggleInventory(tab?: 'inventory' | 'market'): void {
+    const wasOpen = this.showInventory;
     this.showInventory = !this.showInventory;
+    
+    // If opening or tab is specified, set the tab
+    if (this.showInventory && tab) {
+      this.inventoryTab = tab;
+    } else if (!wasOpen && !tab) {
+      // Default to inventory tab when opening without specifying
+      this.inventoryTab = 'inventory';
+    }
   }
 
   /** Check if inventory is currently shown (blocks input) */
@@ -363,7 +372,7 @@ export class HUD {
     ctx.textAlign = 'center';
 
     // Build contextual action hints
-    const hints = ['WASD: Pan', 'Right-click: Move', 'SPACE: End Turn', 'R: Rest', 'I: Inventory'];
+    const hints = ['WASD: Pan', 'Right-click: Move', 'SPACE: End Turn', 'R: Rest', 'I: Inventory', 'M: Market'];
     if (this.engine.canHunt()) {
       hints.push('H: Hunt');
     }

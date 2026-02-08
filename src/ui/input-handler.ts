@@ -78,6 +78,20 @@ export class InputHandler {
       return;
     }
 
+    // Open inventory to Market tab (always allowed)
+    if (e.key === 'm' || e.key === 'M') {
+      if (this.hud) {
+        if (this.hud.isInventoryOpen()) {
+          // If already open, just switch to market tab or close
+          this.hud.toggleInventory('market');
+        } else {
+          // If closed, open to market tab
+          this.hud.toggleInventory('market');
+        }
+      }
+      return;
+    }
+
     // Close inventory with Escape
     if (e.key === 'Escape' && this.hud?.isInventoryOpen()) {
       this.hud.toggleInventory();

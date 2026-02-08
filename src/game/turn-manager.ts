@@ -267,12 +267,34 @@ function tickCreatures(state: GameState, rng: SeededRandom): void {
   // Check for creatures that moved onto the party's position — initiate combat
   checkCreaturePartyCollision(state, rng);
 
-  // Remove dead creatures
+  // Remove dead creatures and add blood splashes
   for (const [id, creature] of world.creatures) {
     if (creature.health <= 0) {
+      // Calculate offset if creature was on same tile as party
+      let offsetX = 0;
+      let offsetY = 0;
+      if (creature.position.x === state.party.position.x && creature.position.y === state.party.position.y) {
+        offsetX = 12;
+        offsetY = 6;
+      }
+      
+      // Add blood splash before removing
+      world.bloodSplashes.push({
+        x: creature.position.x,
+        y: creature.position.y,
+        offsetX,
+        offsetY,
+        createdTurn: state.turn,
+        creatureType: creature.type
+      });
       world.creatures.delete(id);
     }
   }
+  
+  // Clean up old blood splashes (older than 10 turns)
+  world.bloodSplashes = world.bloodSplashes.filter(
+    splash => state.turn - splash.createdTurn < 10
+  );
 }
 
 /** Check if any hostile creatures moved onto the party's position and run combat */

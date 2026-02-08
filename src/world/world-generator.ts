@@ -142,5 +142,6 @@ export function generateWorld(
     tradeRoutes: new Map(),
     items: new Map(),
     diplomacy,
+    bloodSplashes: [],
   };
 }

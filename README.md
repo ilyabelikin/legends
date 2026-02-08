@@ -49,6 +49,7 @@ When you press **I**, you'll open the inventory/trading screen:
 | **R**             | Rest (heal at settlements, camp in wilderness)     |
 | **H**             | Hunt wild animals (deer, sheep, boar, wolf, bear)  |
 | **I**             | Open inventory/trading screen                      |
+| **M**             | Open market tab (when in town)                     |
 | **B**             | Board/disembark boat at pier                       |
 | **C**             | Center camera on party                             |
 | **+/-**           | Zoom in/out                                        |

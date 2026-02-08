@@ -1,4 +1,5 @@
 import type { GameState } from '../types/game';
+import type { World } from '../types/world';
 import type { Tile } from '../types/terrain';
 import type { Location } from '../types/location';
 import type { Creature } from '../types/creature';
@@ -149,6 +150,23 @@ export class Renderer {
         // Remove dead enemies after animation
         const enemy = world.creatures.get(combatAnim.enemyId);
         if (enemy && enemy.health <= 0) {
+          // Calculate offset if creature was on same tile as party
+          let offsetX = 0;
+          let offsetY = 0;
+          if (enemy.position.x === party.position.x && enemy.position.y === party.position.y) {
+            offsetX = 12;
+            offsetY = 6;
+          }
+          
+          // Add blood splash before removing creature
+          world.bloodSplashes.push({
+            x: enemy.position.x,
+            y: enemy.position.y,
+            offsetX,
+            offsetY,
+            createdTurn: state.turn,
+            creatureType: enemy.type
+          });
           world.creatures.delete(combatAnim.enemyId);
         }
         state.combatAnimation = null;
@@ -181,6 +199,9 @@ export class Renderer {
       this.renderSelectionHighlight(ctx, state.selectedTile.x, state.selectedTile.y,
         world.tiles[state.selectedTile.y]?.[state.selectedTile.x]?.elevation ?? 0.3);
     }
+
+    // Render blood splashes
+    this.renderBloodSplashes(ctx, world, state.turn, range);
 
     // Render country borders and names
     this.renderCountryBorders(ctx, world, range);
@@ -927,6 +948,67 @@ export class Renderer {
         ctx.closePath();
         ctx.fill();
       }
+    }
+  }
+
+  /** Render blood splashes that fade over time */
+  private renderBloodSplashes(
+    ctx: CanvasRenderingContext2D,
+    world: World,
+    currentTurn: number,
+    range: { minX: number; maxX: number; minY: number; maxY: number }
+  ): void {
+    const FADE_DURATION = 10; // turns before blood fully fades
+    
+    for (const splash of world.bloodSplashes) {
+      const { x, y, offsetX, offsetY, createdTurn } = splash;
+      
+      // Skip if outside visible range
+      if (x < range.minX || x > range.maxX || y < range.minY || y > range.maxY) continue;
+      
+      const tile = world.tiles[y]?.[x];
+      if (!tile || !tile.visible) continue;
+      
+      const age = currentTurn - createdTurn;
+      if (age >= FADE_DURATION) continue; // fully faded
+      
+      let sx = (x - y) * (TILE_WIDTH / 2);
+      let sy = (x + y) * (TILE_HEIGHT / 2);
+      const elevOffset = Math.floor(tile.elevation * 5) * ELEVATION_HEIGHT;
+      
+      // Apply stored offset (if creature was offset from party when killed)
+      sx += offsetX;
+      sy += offsetY;
+      
+      // Fade out over time
+      const opacity = Math.max(0, 1 - (age / FADE_DURATION));
+      
+      // Draw blood splash (dark red irregular shape)
+      ctx.fillStyle = `rgba(100, 20, 20, ${opacity * 0.7})`;
+      
+      // Draw several overlapping circles to create a splash effect
+      const baseRadius = 4;
+      ctx.globalAlpha = opacity * 0.7;
+      
+      // Main splash
+      ctx.beginPath();
+      ctx.arc(sx, sy - elevOffset, baseRadius, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Splatter drops
+      ctx.beginPath();
+      ctx.arc(sx - 3, sy - elevOffset - 2, baseRadius * 0.6, 0, Math.PI * 2);
+      ctx.fill();
+      
+      ctx.beginPath();
+      ctx.arc(sx + 2, sy - elevOffset + 2, baseRadius * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+      
+      ctx.beginPath();
+      ctx.arc(sx + 4, sy - elevOffset - 1, baseRadius * 0.4, 0, Math.PI * 2);
+      ctx.fill();
+      
+      ctx.globalAlpha = 1;
     }
   }
 
