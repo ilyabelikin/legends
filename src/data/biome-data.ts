@@ -7,7 +7,7 @@ export const BIOME_DEFINITIONS: Record<BiomeType, BiomeDefinition> = {
     name: 'Ocean',
     description: 'Deep open waters, impassable without a ship.',
     movementCost: Infinity,
-    elevationRange: [0, 0.25],
+    elevationRange: [4, 4],  // Always at sea level (depth is conceptual)
     moistureRange: [0, 1],
     temperatureRange: [0, 1],
     baseColor: '#1a5276',
@@ -25,7 +25,7 @@ export const BIOME_DEFINITIONS: Record<BiomeType, BiomeDefinition> = {
     name: 'Beach',
     description: 'Sandy coastline where land meets sea.',
     movementCost: 1.3,
-    elevationRange: [0.25, 0.32],
+    elevationRange: [4, 4],  // Always at sea level (flat with ocean)
     moistureRange: [0.3, 1],
     temperatureRange: [0.3, 1],
     baseColor: '#e8d4a2',
@@ -43,7 +43,7 @@ export const BIOME_DEFINITIONS: Record<BiomeType, BiomeDefinition> = {
     name: 'Desert',
     description: 'Arid wasteland with scorching heat and little water.',
     movementCost: 2.0,
-    elevationRange: [0.3, 0.55],
+    elevationRange: [5, 8],  // 0-14 scale: lowland to highland
     moistureRange: [0, 0.15],
     temperatureRange: [0.65, 1],
     baseColor: '#d4a843',
@@ -61,7 +61,7 @@ export const BIOME_DEFINITIONS: Record<BiomeType, BiomeDefinition> = {
     name: 'Grassland',
     description: 'Fertile plains with tall grasses — ideal for farming.',
     movementCost: 1.0,
-    elevationRange: [0.3, 0.5],
+    elevationRange: [4, 7],  // Lowland plains (can be at sea level)
     moistureRange: [0.25, 0.6],
     temperatureRange: [0.3, 0.7],
     baseColor: '#5a9c3a',
@@ -79,7 +79,7 @@ export const BIOME_DEFINITIONS: Record<BiomeType, BiomeDefinition> = {
     name: 'Forest',
     description: 'Temperate woodland rich in timber and wildlife.',
     movementCost: 1.5,
-    elevationRange: [0.32, 0.55],
+    elevationRange: [5, 8],  // 0-14 scale: lowland to highland
     moistureRange: [0.4, 0.75],
     temperatureRange: [0.25, 0.65],
     baseColor: '#2d6b1e',
@@ -97,7 +97,7 @@ export const BIOME_DEFINITIONS: Record<BiomeType, BiomeDefinition> = {
     name: 'Dense Forest',
     description: 'Thick, dark woodland — hard to traverse but full of secrets.',
     movementCost: 2.5,
-    elevationRange: [0.32, 0.55],
+    elevationRange: [5, 8],  // 0-14 scale: lowland to highland
     moistureRange: [0.65, 1],
     temperatureRange: [0.25, 0.65],
     baseColor: '#1a4c0c',
@@ -115,7 +115,7 @@ export const BIOME_DEFINITIONS: Record<BiomeType, BiomeDefinition> = {
     name: 'Jungle',
     description: 'Lush tropical rainforest teeming with life and danger.',
     movementCost: 3.0,
-    elevationRange: [0.3, 0.5],
+    elevationRange: [5, 7],  // 0-14 scale: lowland
     moistureRange: [0.75, 1],
     temperatureRange: [0.7, 1],
     baseColor: '#1a6b1a',
@@ -133,7 +133,7 @@ export const BIOME_DEFINITIONS: Record<BiomeType, BiomeDefinition> = {
     name: 'Hills',
     description: 'Rolling grassy hills with stone outcrops — good for grazing.',
     movementCost: 1.5,
-    elevationRange: [0.5, 0.65],
+    elevationRange: [8, 9],  // 0-14 scale: highland
     moistureRange: [0.2, 0.6],
     temperatureRange: [0.2, 0.7],
     baseColor: '#8c9c5c',
@@ -151,7 +151,7 @@ export const BIOME_DEFINITIONS: Record<BiomeType, BiomeDefinition> = {
     name: 'Mountains',
     description: 'Tall rocky peaks — dangerous but rich in ore.',
     movementCost: 3.0,
-    elevationRange: [0.65, 0.82],
+    elevationRange: [10, 12],  // 0-14 scale: mountain range
     moistureRange: [0, 1],
     temperatureRange: [0, 1],
     baseColor: '#7c7c7c',
@@ -169,7 +169,7 @@ export const BIOME_DEFINITIONS: Record<BiomeType, BiomeDefinition> = {
     name: 'Snow-capped Peaks',
     description: 'Frozen mountain heights — nearly impassable.',
     movementCost: 5.0,
-    elevationRange: [0.82, 1],
+    elevationRange: [13, 14],  // 0-14 scale: highest peaks
     moistureRange: [0, 1],
     temperatureRange: [0, 0.3],
     baseColor: '#c8c8d8',
@@ -187,7 +187,7 @@ export const BIOME_DEFINITIONS: Record<BiomeType, BiomeDefinition> = {
     name: 'Tundra',
     description: 'Frozen wasteland with permafrost and harsh winds.',
     movementCost: 2.0,
-    elevationRange: [0.3, 0.65],
+    elevationRange: [5, 9],  // 0-14 scale: lowland to highland
     moistureRange: [0.1, 0.5],
     temperatureRange: [0, 0.2],
     baseColor: '#a8b8a0',
@@ -205,7 +205,7 @@ export const BIOME_DEFINITIONS: Record<BiomeType, BiomeDefinition> = {
     name: 'Swamp',
     description: 'Murky wetlands — treacherous but with rare herbs.',
     movementCost: 2.5,
-    elevationRange: [0.28, 0.38],
+    elevationRange: [4, 6],  // Low coastal and inland wetlands
     moistureRange: [0.7, 1],
     temperatureRange: [0.3, 0.7],
     baseColor: '#4c6c3c',
@@ -223,7 +223,7 @@ export const BIOME_DEFINITIONS: Record<BiomeType, BiomeDefinition> = {
     name: 'Savanna',
     description: 'Dry grasslands with scattered trees and roaming herds.',
     movementCost: 1.2,
-    elevationRange: [0.3, 0.5],
+    elevationRange: [4, 7],  // Lowland plains
     moistureRange: [0.15, 0.35],
     temperatureRange: [0.6, 0.9],
     baseColor: '#b8a848',

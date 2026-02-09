@@ -1,4 +1,4 @@
-import type { Position } from '../types/terrain';
+import type { Position } from "../types/terrain";
 
 /** Clamp a value between min and max */
 export function clamp(value: number, min: number, max: number): number {
@@ -36,22 +36,37 @@ export function chebyshevDist(a: Position, b: Position): number {
 /** Map a value from one range to another */
 export function mapRange(
   value: number,
-  inMin: number, inMax: number,
-  outMin: number, outMax: number
+  inMin: number,
+  inMax: number,
+  outMin: number,
+  outMax: number,
 ): number {
   return outMin + ((value - inMin) / (inMax - inMin)) * (outMax - outMin);
 }
 
 /** Get 4-directional neighbors */
-export function getNeighbors4(pos: Position, width: number, height: number): Position[] {
-  const dirs = [{ x: 0, y: -1 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: -1, y: 0 }];
+export function getNeighbors4(
+  pos: Position,
+  width: number,
+  height: number,
+): Position[] {
+  const dirs = [
+    { x: 0, y: -1 },
+    { x: 1, y: 0 },
+    { x: 0, y: 1 },
+    { x: -1, y: 0 },
+  ];
   return dirs
-    .map(d => ({ x: pos.x + d.x, y: pos.y + d.y }))
-    .filter(p => p.x >= 0 && p.x < width && p.y >= 0 && p.y < height);
+    .map((d) => ({ x: pos.x + d.x, y: pos.y + d.y }))
+    .filter((p) => p.x >= 0 && p.x < width && p.y >= 0 && p.y < height);
 }
 
 /** Get 8-directional neighbors */
-export function getNeighbors8(pos: Position, width: number, height: number): Position[] {
+export function getNeighbors8(
+  pos: Position,
+  width: number,
+  height: number,
+): Position[] {
   const result: Position[] = [];
   for (let dy = -1; dy <= 1; dy++) {
     for (let dx = -1; dx <= 1; dx++) {
@@ -67,12 +82,21 @@ export function getNeighbors8(pos: Position, width: number, height: number): Pos
 }
 
 /** Check if a position is within bounds */
-export function inBounds(pos: Position, width: number, height: number): boolean {
+export function inBounds(
+  pos: Position,
+  width: number,
+  height: number,
+): boolean {
   return pos.x >= 0 && pos.x < width && pos.y >= 0 && pos.y < height;
 }
 
 /** Convert world position to isometric screen coordinates */
-export function worldToIso(x: number, y: number, tileWidth: number, tileHeight: number): { sx: number; sy: number } {
+export function worldToIso(
+  x: number,
+  y: number,
+  tileWidth: number,
+  tileHeight: number,
+): { sx: number; sy: number } {
   return {
     sx: (x - y) * (tileWidth / 2),
     sy: (x + y) * (tileHeight / 2),
@@ -80,7 +104,12 @@ export function worldToIso(x: number, y: number, tileWidth: number, tileHeight: 
 }
 
 /** Convert isometric screen coordinates to world position */
-export function isoToWorld(sx: number, sy: number, tileWidth: number, tileHeight: number): { x: number; y: number } {
+export function isoToWorld(
+  sx: number,
+  sy: number,
+  tileWidth: number,
+  tileHeight: number,
+): { x: number; y: number } {
   return {
     x: (sx / (tileWidth / 2) + sy / (tileHeight / 2)) / 2,
     y: (sy / (tileHeight / 2) - sx / (tileWidth / 2)) / 2,

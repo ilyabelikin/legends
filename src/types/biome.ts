@@ -20,9 +20,9 @@ export interface BiomeDefinition {
   name: string;
   description: string;
   movementCost: number;       // turns to cross
-  elevationRange: [number, number];
-  moistureRange: [number, number];
-  temperatureRange: [number, number];
+  elevationRange: [number, number];  // 0–14 discrete elevation levels
+  moistureRange: [number, number];   // 0–1 normalized
+  temperatureRange: [number, number]; // 0–1 normalized
   baseColor: string;          // hex color for rendering
   vegetationDensity: number;  // default vegetation 0–1
   possibleResources: string[];

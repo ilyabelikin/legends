@@ -47,14 +47,17 @@ function classifyBiome(
     return 'beach';
   }
 
-  // High mountains
-  if (terrain === 'peak') return 'snow_mountain';
+  // High mountains - snow peaks ONLY at highest elevations (13-14)
+  if (terrain === 'peak') {
+    return 'snow_mountain';
+  }
+  
+  // Mountains (10-12) - always rocky mountains, never snow peaks
   if (terrain === 'mountain') {
-    if (temp < 0.3) return 'snow_mountain';
     return 'mountain';
   }
 
-  // Highland
+  // Highland (8-9) - always hills
   if (terrain === 'highland') {
     return 'hills';
   }
@@ -80,8 +83,8 @@ function classifyBiome(
     return 'jungle';
   }
 
-  // Wet lowland
-  if (moist > 0.75 && elev < 0.38) {
+  // Wet lowland - swamps in low-lying areas (elevation 4-6)
+  if (moist > 0.75 && elev <= 6) {
     return 'swamp';
   }
 

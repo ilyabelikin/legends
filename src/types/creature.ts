@@ -12,7 +12,8 @@ export type CreatureType =
   | 'guard'
   | 'army'
   | 'trader'
-  | 'hunter';
+  | 'hunter'
+  | 'builder';
 
 /** Behavior patterns for creatures */
 export type CreatureBehavior =
@@ -63,6 +64,10 @@ export interface Creature {
   lastWoolProduction?: number;
   /** Breeding cooldown (turns until can breed again) */
   breedingCooldown?: number;
+  /** Turns until can attack again (for dragons after attacking) */
+  attackCooldown?: number;
+  /** Turns without finding prey (for hunters) */
+  turnsWithoutPrey?: number;
 }
 
 /** Static definition for a creature type */

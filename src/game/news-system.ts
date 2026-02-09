@@ -79,7 +79,12 @@ function learnEvent(state: GameState, event: GameEvent): void {
 export function checkDirectWitness(state: GameState, event: GameEvent): boolean {
   const { party, world } = state;
 
-  // No location = global event, party doesn't witness directly
+  // Global events (wars, peace treaties, etc.) are always heard immediately
+  if (!event.locationId && (event.severity === 'catastrophic' || event.severity === 'major')) {
+    return true;
+  }
+
+  // No location = not witnessed
   if (!event.locationId) return false;
 
   const loc = world.locations.get(event.locationId);

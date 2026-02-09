@@ -287,8 +287,10 @@ export function updateRouteDanger(world: World): void {
 }
 
 /**
- * Spawn visible trader creatures on active trade routes.
- * Each active route gets a trader caravan that walks back and forth.
+ * Send traders (merchants) on trade routes.
+ * Traders are actual Characters from settlements who travel between towns.
+ * NOTE: For now, still using Creature-based traders as they require complex pathfinding.
+ * TODO: Migrate to Character-based system once trade route following is implemented for Characters.
  */
 export function spawnTraders(world: World, rng: SeededRandom): void {
   const MAX_TRADERS = 15;

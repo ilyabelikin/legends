@@ -1,4 +1,4 @@
-import { clamp } from '../utils/math';
+import { clamp } from "../utils/math";
 
 /** Isometric tile dimensions */
 export const TILE_WIDTH = 64;
@@ -50,8 +50,10 @@ export class Camera {
     const zoomRatio = newZoom / this.targetZoom;
 
     // Adjust position so zoom centers on cursor
-    const worldX = (screenX - this.screenWidth / 2) / this.targetZoom + this.targetX;
-    const worldY = (screenY - this.screenHeight / 2) / this.targetZoom + this.targetY;
+    const worldX =
+      (screenX - this.screenWidth / 2) / this.targetZoom + this.targetX;
+    const worldY =
+      (screenY - this.screenHeight / 2) / this.targetZoom + this.targetY;
 
     this.targetX = worldX - (worldX - this.targetX) / zoomRatio;
     this.targetY = worldY - (worldY - this.targetY) / zoomRatio;
@@ -91,8 +93,14 @@ export class Camera {
   }
 
   /** Get visible tile range */
-  getVisibleRange(worldWidth: number, worldHeight: number): {
-    minX: number; maxX: number; minY: number; maxY: number;
+  getVisibleRange(
+    worldWidth: number,
+    worldHeight: number,
+  ): {
+    minX: number;
+    maxX: number;
+    minY: number;
+    maxY: number;
   } {
     const margin = 4;
     const topLeft = this.screenToTile(0, 0);
@@ -101,10 +109,26 @@ export class Camera {
     const bottomRight = this.screenToTile(this.screenWidth, this.screenHeight);
 
     return {
-      minX: clamp(Math.min(topLeft.tx, bottomLeft.tx) - margin, 0, worldWidth - 1),
-      maxX: clamp(Math.max(topRight.tx, bottomRight.tx) + margin, 0, worldWidth - 1),
-      minY: clamp(Math.min(topLeft.ty, topRight.ty) - margin, 0, worldHeight - 1),
-      maxY: clamp(Math.max(bottomLeft.ty, bottomRight.ty) + margin, 0, worldHeight - 1),
+      minX: clamp(
+        Math.min(topLeft.tx, bottomLeft.tx) - margin,
+        0,
+        worldWidth - 1,
+      ),
+      maxX: clamp(
+        Math.max(topRight.tx, bottomRight.tx) + margin,
+        0,
+        worldWidth - 1,
+      ),
+      minY: clamp(
+        Math.min(topLeft.ty, topRight.ty) - margin,
+        0,
+        worldHeight - 1,
+      ),
+      maxY: clamp(
+        Math.max(bottomLeft.ty, bottomRight.ty) + margin,
+        0,
+        worldHeight - 1,
+      ),
     };
   }
 

@@ -1,30 +1,66 @@
-import type { TerrainType } from '../types/terrain';
-import { SimplexNoise } from '../utils/simplex-noise';
-import { SeededRandom } from '../utils/random';
-import { clamp } from '../utils/math';
+import type { TerrainType } from "../types/terrain";
+import { SimplexNoise } from "../utils/simplex-noise";
+import { SeededRandom } from "../utils/random";
+import { clamp } from "../utils/math";
 
-/** Elevation thresholds for terrain classification */
+/** Elevation thresholds for terrain classification (0-14 scale) */
 const TERRAIN_THRESHOLDS: { max: number; type: TerrainType }[] = [
-  { max: 0.22, type: 'deep_ocean' },
-  { max: 0.30, type: 'shallow_ocean' },
-  { max: 0.33, type: 'coast' },
-  { max: 0.50, type: 'lowland' },
-  { max: 0.65, type: 'highland' },
-  { max: 0.82, type: 'mountain' },
-  { max: 1.00, type: 'peak' },
+  { max: 2, type: "deep_ocean" }, // 0-2 (before normalization to sea level)
+  { max: 4, type: "shallow_ocean" }, // 3-4 (before normalization to sea level)
+  { max: 5, type: "lowland" }, // 4-5 (sea level and just above)
+  { max: 7, type: "lowland" }, // 6-7
+  { max: 9, type: "highland" }, // 8-9
+  { max: 12, type: "mountain" }, // 10-12
+  { max: 14, type: "peak" }, // 13-14
 ];
 
-/** Classify elevation into terrain type */
+/**
+ * Classify elevation into terrain type (elevation is 0-14)
+ * Note: Ocean tiles will be normalized to sea level (4) after classification
+ * Coast classification is done separately based on adjacency to ocean
+ */
 export function classifyTerrain(elevation: number): TerrainType {
   for (const threshold of TERRAIN_THRESHOLDS) {
     if (elevation <= threshold.max) return threshold.type;
   }
-  return 'peak';
+  return "peak";
+}
+
+/** Check if a position is adjacent to ocean tiles */
+export function isAdjacentToOcean(
+  x: number,
+  y: number,
+  terrainTypes: TerrainType[][],
+  width: number,
+  height: number,
+): boolean {
+  const neighbors = [
+    { dx: -1, dy: 0 },
+    { dx: 1, dy: 0 },
+    { dx: 0, dy: -1 },
+    { dx: 0, dy: 1 },
+    { dx: -1, dy: -1 },
+    { dx: 1, dy: -1 },
+    { dx: -1, dy: 1 },
+    { dx: 1, dy: 1 },
+  ];
+
+  for (const { dx, dy } of neighbors) {
+    const nx = x + dx;
+    const ny = y + dy;
+    if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+      const terrain = terrainTypes[ny][nx];
+      if (terrain === "deep_ocean" || terrain === "shallow_ocean") {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 /** Check if terrain is water */
 export function isWater(type: TerrainType): boolean {
-  return type === 'deep_ocean' || type === 'shallow_ocean';
+  return type === "deep_ocean" || type === "shallow_ocean";
 }
 
 /** Check if terrain is land */
@@ -32,7 +68,7 @@ export function isLand(type: TerrainType): boolean {
   return !isWater(type);
 }
 
-/** Generate the elevation map for the world */
+/** Generate the elevation map for the world (returns discrete 0-14 levels) */
 export function generateElevation(
   width: number,
   height: number,
@@ -51,8 +87,8 @@ export function generateElevation(
 
       // Multi-octave noise for continent shapes
       let e = 0;
-      e += 1.00 * noise.noise2D(nx * 3, ny * 3);
-      e += 0.50 * noise.noise2D(nx * 6, ny * 6);
+      e += 1.0 * noise.noise2D(nx * 3, ny * 3);
+      e += 0.5 * noise.noise2D(nx * 6, ny * 6);
       e += 0.25 * noise.noise2D(nx * 12, ny * 12);
       e += 0.12 * noise.noise2D(nx * 24, ny * 24);
       e = e / (1.0 + 0.5 + 0.25 + 0.12);
@@ -77,7 +113,7 @@ export function generateElevation(
 
       // Second continent (southeast) — larger and distinct
       const cx2 = nx - 0.65;
-      const cy2 = ny - 0.70;
+      const cy2 = ny - 0.7;
       const dist2 = Math.sqrt(cx2 * cx2 + cy2 * cy2) * 2.5;
       const coastNoise2 = noise.noise2D(nx * 2.3 + 7, ny * 2.3 + 7) * 0.18;
       const mask2 = 1 - Math.pow(clamp(dist2 + coastNoise2, 0, 1), 1.6);
@@ -94,21 +130,22 @@ export function generateElevation(
 
       // Scattered islands (central ocean)
       const cx4 = nx - 0.55;
-      const cy4 = ny - 0.50;
+      const cy4 = ny - 0.5;
       const dist4 = Math.sqrt(cx4 * cx4 + cy4 * cy4) * 6;
       const mask4 = 1 - Math.pow(clamp(dist4, 0, 1), 3);
       const islands2 = noise.fbm(nx * 6 + 40, ny * 6 + 40, 3) * 0.5 + 0.5;
-      e = Math.max(e, islands2 * mask4 * 0.50);
+      e = Math.max(e, islands2 * mask4 * 0.5);
 
       // Small archipelago (southwest)
-      const cx5 = nx - 0.20;
-      const cy5 = ny - 0.80;
+      const cx5 = nx - 0.2;
+      const cy5 = ny - 0.8;
       const dist5 = Math.sqrt(cx5 * cx5 + cy5 * cy5) * 7;
       const mask5 = 1 - Math.pow(clamp(dist5, 0, 1), 3.5);
       const islands3 = noise.fbm(nx * 7 + 60, ny * 7 + 60, 2) * 0.5 + 0.5;
       e = Math.max(e, islands3 * mask5 * 0.45);
 
-      elevation[y][x] = clamp(e, 0, 1);
+      // Convert from [0,1] to discrete [0,14] levels
+      elevation[y][x] = Math.floor(clamp(e, 0, 0.999) * 15);
     }
   }
 
@@ -132,8 +169,9 @@ export function generateTemperature(
       const ny = y / height;
       const latitudeTemp = 1 - Math.abs(ny - 0.5) * 2;
 
-      // Reduce temperature at high elevation
-      const elevEffect = Math.max(0, elevation[y][x] - 0.5) * 1.5;
+      // Reduce temperature at high elevation (normalize 0-14 to 0-1 for calculation)
+      const elevNorm = elevation[y][x] / 14;
+      const elevEffect = Math.max(0, elevNorm - 0.5) * 1.5;
 
       // Add some noise variation
       const nx = x / width;

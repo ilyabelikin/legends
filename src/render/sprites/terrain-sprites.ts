@@ -1,13 +1,13 @@
-import { PALETTE, darkenColor, lightenColor } from '../palette';
-import { TILE_WIDTH, TILE_HEIGHT, ELEVATION_HEIGHT } from '../camera';
-import type { BiomeType } from '../../types/biome';
-import type { Season } from '../../types/season';
+import { PALETTE, darkenColor, lightenColor } from "../palette";
+import { TILE_WIDTH, TILE_HEIGHT, ELEVATION_HEIGHT } from "../camera";
+import type { BiomeType } from "../../types/biome";
+import type { Season } from "../../types/season";
 
 /** Cache for terrain sprites */
 const spriteCache = new Map<string, OffscreenCanvas>();
 
 /** Layer type for split rendering: ground under roads, trees over roads */
-export type TerrainLayer = 'ground' | 'vegetation';
+export type TerrainLayer = "ground" | "vegetation";
 
 /** Get or create a terrain sprite for a biome */
 export function getTerrainSprite(
@@ -16,15 +16,22 @@ export function getTerrainSprite(
   variant: number,
   season: Season,
   vegetation: number,
-  layer: TerrainLayer = 'ground',
+  layer: TerrainLayer = "ground",
 ): OffscreenCanvas {
-  const elevKey = Math.round(elevation * 5);
+  // elevation is now 0-14 discrete integer
   const vegKey = Math.round(vegetation * 3);
-  const key = `${layer}_${biome}_${elevKey}_${variant}_${season}_${vegKey}`;
+  const key = `${layer}_${biome}_${elevation}_${variant}_${season}_${vegKey}`;
   const cached = spriteCache.get(key);
   if (cached) return cached;
 
-  const sprite = createTerrainSprite(biome, elevation, variant, season, vegetation, layer);
+  const sprite = createTerrainSprite(
+    biome,
+    elevation,
+    variant,
+    season,
+    vegetation,
+    layer,
+  );
   spriteCache.set(key, sprite);
   return sprite;
 }
@@ -38,31 +45,65 @@ function createTerrainSprite(
   vegetation: number,
   layer: TerrainLayer,
 ): OffscreenCanvas {
-  const elevPx = Math.floor(elevation * 5) * ELEVATION_HEIGHT;
+  // elevation is now 0-14 discrete integer
+  const elevPx = elevation * ELEVATION_HEIGHT;
   const totalHeight = TILE_HEIGHT + elevPx + 40;
   const canvas = new OffscreenCanvas(TILE_WIDTH + 2, totalHeight);
-  const ctx = canvas.getContext('2d')!;
+  const ctx = canvas.getContext("2d")!;
 
   const colors = getBiomeColors(biome, season);
   const baseY = totalHeight - TILE_HEIGHT - elevPx;
 
-  if (layer === 'ground') {
+  if (layer === "ground") {
     // Elevation side walls
     if (elevPx > 0) {
-      drawElevationSide(ctx, baseY + TILE_HEIGHT / 2, elevPx, colors.sideDark, colors.sideLight);
+      drawElevationSide(
+        ctx,
+        baseY + TILE_HEIGHT / 2,
+        elevPx,
+        colors.sideDark,
+        colors.sideLight,
+      );
     }
     // Top diamond
-    drawIsoDiamond(ctx, TILE_WIDTH / 2 + 1, baseY + TILE_HEIGHT / 2, TILE_WIDTH, TILE_HEIGHT, colors.top);
+    drawIsoDiamond(
+      ctx,
+      TILE_WIDTH / 2 + 1,
+      baseY + TILE_HEIGHT / 2,
+      TILE_WIDTH,
+      TILE_HEIGHT,
+      colors.top,
+    );
     // Terrain texture
-    addTerrainTexture(ctx, TILE_WIDTH / 2 + 1, baseY + TILE_HEIGHT / 2, biome, variant, colors);
+    addTerrainTexture(
+      ctx,
+      TILE_WIDTH / 2 + 1,
+      baseY + TILE_HEIGHT / 2,
+      biome,
+      variant,
+      colors,
+    );
     // Water shimmer
-    if (biome === 'ocean') {
+    if (biome === "ocean") {
       addWaterEffect(ctx, TILE_WIDTH / 2 + 1, baseY + TILE_HEIGHT / 2, variant);
     }
   } else {
     // Vegetation only (trees, bushes)
-    if (vegetation > 0.1 && biome !== 'ocean' && biome !== 'beach' && biome !== 'desert') {
-      drawVegetation(ctx, TILE_WIDTH / 2 + 1, baseY, biome, vegetation, season, variant);
+    if (
+      vegetation > 0.1 &&
+      biome !== "ocean" &&
+      biome !== "beach" &&
+      biome !== "desert"
+    ) {
+      drawVegetation(
+        ctx,
+        TILE_WIDTH / 2 + 1,
+        baseY,
+        biome,
+        vegetation,
+        season,
+        variant,
+      );
     }
   }
 
@@ -70,64 +111,76 @@ function createTerrainSprite(
 }
 
 /** Get colors for a biome with seasonal variation */
-function getBiomeColors(biome: BiomeType, season: Season): {
-  top: string; sideDark: string; sideLight: string; accent: string
+function getBiomeColors(
+  biome: BiomeType,
+  season: Season,
+): {
+  top: string;
+  sideDark: string;
+  sideLight: string;
+  accent: string;
 } {
   let top: string;
   let accent: string;
 
   switch (biome) {
-    case 'ocean':
-      top = season === 'winter' ? PALETTE.deepWater : PALETTE.water;
+    case "ocean":
+      top = season === "winter" ? PALETTE.deepWater : PALETTE.water;
       accent = PALETTE.waterHighlight;
       break;
-    case 'beach':
+    case "beach":
       top = PALETTE.sand;
       accent = PALETTE.sandDark;
       break;
-    case 'desert':
+    case "desert":
       top = PALETTE.desert;
       accent = PALETTE.desertDark;
       break;
-    case 'grassland':
-      top = season === 'winter' ? PALETTE.dryGrass
-        : season === 'autumn' ? '#8ca04c'
-        : PALETTE.grass;
+    case "grassland":
+      top =
+        season === "winter"
+          ? PALETTE.dryGrass
+          : season === "autumn"
+            ? "#8ca04c"
+            : PALETTE.grass;
       accent = PALETTE.grassLight;
       break;
-    case 'forest':
-    case 'dense_forest':
-      top = season === 'winter' ? '#5c7c4c'
-        : season === 'autumn' ? '#a07030'
-        : PALETTE.grassDark;
+    case "forest":
+    case "dense_forest":
+      top =
+        season === "winter"
+          ? "#5c7c4c"
+          : season === "autumn"
+            ? "#a07030"
+            : PALETTE.grassDark;
       accent = PALETTE.treeLight;
       break;
-    case 'jungle':
+    case "jungle":
       top = PALETTE.jungleTree;
       accent = PALETTE.jungleTreeDark;
       break;
-    case 'hills':
-      top = season === 'winter' ? PALETTE.snowShadow : PALETTE.hillGrass;
+    case "hills":
+      top = season === "winter" ? PALETTE.snowShadow : PALETTE.hillGrass;
       accent = PALETTE.rock;
       break;
-    case 'mountain':
+    case "mountain":
       top = PALETTE.rock;
       accent = PALETTE.rockDark;
       break;
-    case 'snow_mountain':
+    case "snow_mountain":
       top = PALETTE.snow;
       accent = PALETTE.snowShadow;
       break;
-    case 'tundra':
-      top = season === 'winter' ? PALETTE.snow : PALETTE.tundra;
+    case "tundra":
+      top = season === "winter" ? PALETTE.snow : PALETTE.tundra;
       accent = PALETTE.tundraDark;
       break;
-    case 'swamp':
+    case "swamp":
       top = PALETTE.swamp;
       accent = PALETTE.swampWater;
       break;
-    case 'savanna':
-      top = season === 'winter' ? PALETTE.dryGrass : PALETTE.savanna;
+    case "savanna":
+      top = season === "winter" ? PALETTE.dryGrass : PALETTE.savanna;
       accent = PALETTE.savannaDark;
       break;
     default:
@@ -146,16 +199,18 @@ function getBiomeColors(biome: BiomeType, season: Season): {
 /** Draw an isometric diamond (top face of tile) */
 function drawIsoDiamond(
   ctx: OffscreenCanvasRenderingContext2D,
-  cx: number, cy: number,
-  w: number, h: number,
+  cx: number,
+  cy: number,
+  w: number,
+  h: number,
   color: string,
 ): void {
   ctx.fillStyle = color;
   ctx.beginPath();
-  ctx.moveTo(cx, cy - h / 2);      // top
-  ctx.lineTo(cx + w / 2, cy);      // right
-  ctx.lineTo(cx, cy + h / 2);      // bottom
-  ctx.lineTo(cx - w / 2, cy);      // left
+  ctx.moveTo(cx, cy - h / 2); // top
+  ctx.lineTo(cx + w / 2, cy); // right
+  ctx.lineTo(cx, cy + h / 2); // bottom
+  ctx.lineTo(cx - w / 2, cy); // left
   ctx.closePath();
   ctx.fill();
 }
@@ -194,7 +249,8 @@ function drawElevationSide(
 /** Add pixel-art texture patterns on the tile surface */
 function addTerrainTexture(
   ctx: OffscreenCanvasRenderingContext2D,
-  cx: number, cy: number,
+  cx: number,
+  cy: number,
   biome: BiomeType,
   variant: number,
   colors: { top: string; accent: string },
@@ -203,7 +259,7 @@ function addTerrainTexture(
   const rng = simpleHash(variant);
   ctx.fillStyle = colors.accent;
 
-  if (biome === 'grassland' || biome === 'savanna') {
+  if (biome === "grassland" || biome === "savanna") {
     // Small grass tufts
     for (let i = 0; i < 6; i++) {
       const ox = ((rng * (i + 1) * 7) % 40) - 20;
@@ -212,7 +268,7 @@ function addTerrainTexture(
         ctx.fillRect(cx + ox, cy + oy, 2, 1);
       }
     }
-  } else if (biome === 'desert') {
+  } else if (biome === "desert") {
     // Sand ripples
     for (let i = 0; i < 4; i++) {
       const ox = ((rng * (i + 1) * 13) % 30) - 15;
@@ -221,7 +277,7 @@ function addTerrainTexture(
         ctx.fillRect(cx + ox, cy + oy, 4, 1);
       }
     }
-  } else if (biome === 'mountain' || biome === 'snow_mountain') {
+  } else if (biome === "mountain" || biome === "snow_mountain") {
     // Rocky texture
     for (let i = 0; i < 5; i++) {
       const ox = ((rng * (i + 1) * 9) % 36) - 18;
@@ -230,7 +286,7 @@ function addTerrainTexture(
         ctx.fillRect(cx + ox, cy + oy, 3, 2);
       }
     }
-  } else if (biome === 'swamp') {
+  } else if (biome === "swamp") {
     // Water puddles
     ctx.fillStyle = PALETTE.swampWater;
     for (let i = 0; i < 3; i++) {
@@ -246,7 +302,8 @@ function addTerrainTexture(
 /** Draw vegetation (trees, bushes) on top of tile */
 function drawVegetation(
   ctx: OffscreenCanvasRenderingContext2D,
-  cx: number, baseY: number,
+  cx: number,
+  baseY: number,
   biome: BiomeType,
   density: number,
   season: Season,
@@ -264,9 +321,9 @@ function drawVegetation(
     const treeX = cx + ox;
     const treeY = baseY + oy + TILE_HEIGHT / 2;
 
-    if (biome === 'jungle' || biome === 'dense_forest') {
-      drawLargeTree(ctx, treeX, treeY, season, biome === 'jungle');
-    } else if (biome === 'forest') {
+    if (biome === "jungle" || biome === "dense_forest") {
+      drawLargeTree(ctx, treeX, treeY, season, biome === "jungle");
+    } else if (biome === "forest") {
       drawTree(ctx, treeX, treeY, season);
     } else {
       drawBush(ctx, treeX, treeY, season);
@@ -275,20 +332,25 @@ function drawVegetation(
 }
 
 /** Draw a small pixel-art tree */
-function drawTree(ctx: OffscreenCanvasRenderingContext2D, x: number, y: number, season: Season): void {
+function drawTree(
+  ctx: OffscreenCanvasRenderingContext2D,
+  x: number,
+  y: number,
+  season: Season,
+): void {
   // Trunk
-  ctx.fillStyle = '#5a3a1a';
+  ctx.fillStyle = "#5a3a1a";
   ctx.fillRect(x, y - 4, 2, 5);
 
   // Foliage — dark base with lighter highlight layer
   let baseColor: string;
   let highlightColor: string;
-  if (season === 'autumn') {
-    baseColor = '#a85820';
-    highlightColor = '#c87838';
-  } else if (season === 'winter') {
-    baseColor = '#4a6840';
-    highlightColor = '#5c7c50';
+  if (season === "autumn") {
+    baseColor = "#a85820";
+    highlightColor = "#c87838";
+  } else if (season === "winter") {
+    baseColor = "#4a6840";
+    highlightColor = "#5c7c50";
   } else {
     baseColor = PALETTE.tree;
     highlightColor = PALETTE.treeLight;
@@ -307,9 +369,15 @@ function drawTree(ctx: OffscreenCanvasRenderingContext2D, x: number, y: number, 
 }
 
 /** Draw a large tree (for dense forests / jungles) */
-function drawLargeTree(ctx: OffscreenCanvasRenderingContext2D, x: number, y: number, season: Season, isJungle: boolean): void {
+function drawLargeTree(
+  ctx: OffscreenCanvasRenderingContext2D,
+  x: number,
+  y: number,
+  season: Season,
+  isJungle: boolean,
+): void {
   // Trunk
-  ctx.fillStyle = isJungle ? '#3a2a0a' : '#4a2a10';
+  ctx.fillStyle = isJungle ? "#3a2a0a" : "#4a2a10";
   ctx.fillRect(x, y - 6, 3, 7);
 
   // Foliage — dark base
@@ -319,15 +387,15 @@ function drawLargeTree(ctx: OffscreenCanvasRenderingContext2D, x: number, y: num
   if (isJungle) {
     baseColor = PALETTE.jungleTreeDark;
     midColor = PALETTE.jungleTree;
-    highlightColor = '#18881a';
-  } else if (season === 'autumn') {
-    baseColor = '#8a4818';
-    midColor = '#a86020';
-    highlightColor = '#c08030';
-  } else if (season === 'winter') {
-    baseColor = '#3a5430';
-    midColor = '#4a6840';
-    highlightColor = '#587850';
+    highlightColor = "#18881a";
+  } else if (season === "autumn") {
+    baseColor = "#8a4818";
+    midColor = "#a86020";
+    highlightColor = "#c08030";
+  } else if (season === "winter") {
+    baseColor = "#3a5430";
+    midColor = "#4a6840";
+    highlightColor = "#587850";
   } else {
     baseColor = PALETTE.treeDark;
     midColor = PALETTE.tree;
@@ -352,12 +420,17 @@ function drawLargeTree(ctx: OffscreenCanvasRenderingContext2D, x: number, y: num
 }
 
 /** Draw a bush */
-function drawBush(ctx: OffscreenCanvasRenderingContext2D, x: number, y: number, season: Season): void {
+function drawBush(
+  ctx: OffscreenCanvasRenderingContext2D,
+  x: number,
+  y: number,
+  season: Season,
+): void {
   // Base
-  ctx.fillStyle = season === 'winter' ? '#5a6848' : PALETTE.treeLight;
+  ctx.fillStyle = season === "winter" ? "#5a6848" : PALETTE.treeLight;
   ctx.fillRect(x - 1, y - 3, 4, 2);
   // Highlight
-  ctx.fillStyle = season === 'winter' ? '#6c7c58' : PALETTE.treeHighlight;
+  ctx.fillStyle = season === "winter" ? "#6c7c58" : PALETTE.treeHighlight;
   ctx.fillRect(x, y - 4, 2, 1);
   ctx.fillRect(x + 1, y - 3, 1, 1);
 }
@@ -365,7 +438,8 @@ function drawBush(ctx: OffscreenCanvasRenderingContext2D, x: number, y: number, 
 /** Water shimmer effect */
 function addWaterEffect(
   ctx: OffscreenCanvasRenderingContext2D,
-  cx: number, cy: number,
+  cx: number,
+  cy: number,
   variant: number,
 ): void {
   ctx.fillStyle = PALETTE.waterHighlight;
@@ -380,8 +454,13 @@ function addWaterEffect(
 }
 
 /** Check if a point is inside an isometric diamond */
-function isInsideDiamond(ox: number, oy: number, w: number, h: number): boolean {
-  return (Math.abs(ox) / (w / 2) + Math.abs(oy) / (h / 2)) <= 1;
+function isInsideDiamond(
+  ox: number,
+  oy: number,
+  w: number,
+  h: number,
+): boolean {
+  return Math.abs(ox) / (w / 2) + Math.abs(oy) / (h / 2) <= 1;
 }
 
 /** Simple integer hash for deterministic patterns */

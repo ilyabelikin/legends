@@ -30,8 +30,9 @@ export function getMovementCost(tile: Tile): number {
   else if (tile.roadLevel >= 2) cost *= 0.5;
   else if (tile.roadLevel >= 1) cost *= 0.7;
 
-  // Steep elevation adds a small penalty
-  cost += Math.max(0, tile.elevation - 0.55) * 1.5;
+  // High elevation adds a small penalty (elevation is 0-14)
+  // Mountains (10+) add significant cost
+  cost += Math.max(0, (tile.elevation - 8) * 0.15);
 
   // Floor at 0.5 so roads are always faster than off-road
   return Math.max(0.5, cost);

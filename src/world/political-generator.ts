@@ -261,12 +261,16 @@ function createNobleCharacter(loc: Location, rng: SeededRandom): Character {
     currentAction: null,
     destination: null,
     turnsUntilArrival: 0,
+    onDuty: false,
+    dutyWanderRadius: 0,
+    turnsOnDuty: 0,
     title: null,
     lordId: null,
     vassalIds: [],
     ownedLocationIds: [],
     knownLocationIds: [loc.id],
     flags: {},
+    herdedCreatureIds: [],
   };
 
   return ch;

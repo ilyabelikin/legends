@@ -12,7 +12,7 @@ export type TerrainType =
 export interface Tile {
   x: number;
   y: number;
-  elevation: number;      // 0–1 normalized
+  elevation: number;      // 0–14 discrete levels (15 total)
   moisture: number;       // 0–1 normalized
   temperature: number;    // 0–1 normalized (0=cold, 1=hot)
   terrainType: TerrainType;
@@ -31,6 +31,8 @@ export interface Tile {
 export interface TileFeature {
   type: TileFeatureType;
   variant: number;
+  /** Direction pier extends from (for piers only): 0=N, 1=E, 2=S, 3=W */
+  direction?: number;
 }
 
 export type TileFeatureType =

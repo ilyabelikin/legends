@@ -21,6 +21,7 @@ When you encounter hostile creatures or hunt wild animals, combat is resolved in
 - **Automatic Cleanup**: Defeated enemies disappear after the animation completes
 
 Combat can be initiated by:
+
 - Moving onto a hostile creature (bandits, dragons, hostile wolves/bears)
 - Being attacked by a hostile creature that moves onto your tile
 - Pressing **H** to hunt game animals (deer, sheep, boar, wolf, bear)
@@ -40,21 +41,20 @@ When you press **I**, you'll open the inventory/trading screen:
 
 ## Controls
 
-| Key               | Action                                             |
-| ----------------- | -------------------------------------------------- |
-| **WASD/Arrows**   | Pan camera (explore the map)                       |
-| **Right-click**   | Move party to location (pathfinding)               |
-| **Left-click**    | Select tile for info                               |
-| **Enter / Space** | End turn (advance world simulation)                |
-| **R**             | Rest (heal at settlements, camp in wilderness)     |
-| **H**             | Hunt wild animals (deer, sheep, boar, wolf, bear)  |
-| **I**             | Open inventory/trading screen                      |
-| **M**             | Open market tab (when in town)                     |
-| **B**             | Board/disembark boat at pier                       |
-| **C**             | Center camera on party                             |
-| **+/-**           | Zoom in/out                                        |
-| **P**             | Pause simulation                                   |
-| **Scroll Wheel**  | Zoom / Scroll event log                            |
+| Key               | Action                                            |
+| ----------------- | ------------------------------------------------- |
+| **WASD/Arrows**   | Pan camera (explore the map)                      |
+| **Right-click**   | Move party to location (pathfinding)              |
+| **Left-click**    | Select tile for info                              |
+| **Enter / Space** | End turn (advance world simulation)               |
+| **R**             | Rest (heal at settlements, camp in wilderness)    |
+| **H**             | Hunt wild animals (deer, sheep, boar, wolf, bear) |
+| **I**             | Open inventory/trading screen                     |
+| **M**             | Open market tab (when in town)                    |
+| **C**             | Center camera on party                            |
+| **+/-**           | Zoom in/out                                       |
+| **P**             | Pause simulation                                  |
+| **Scroll Wheel**  | Zoom / Scroll event log                           |
 
 ## World Generation
 
@@ -75,9 +75,9 @@ The world is procedurally generated in layers:
 8. **Piers** — Automatically placed at coastal and island settlements for boat access
 9. **Politics** — Countries, rulers, and diplomatic relations (~15 countries)
 10. **Creatures** — Wildlife, bandits, dragons, guards, armies (~150 creature groups)
-8. **Population** — Families created with jobs, skills, relationships
-9. **Creatures** — Wildlife and monsters placed by biome
-10. **Politics** — Countries formed, rulers assigned, diplomacy established
+11. **Population** — Families created with jobs, skills, relationships
+12. **Creatures** — Wildlife and monsters placed by biome
+13. **Politics** — Countries formed, rulers assigned, diplomacy established
 
 ## Biomes
 
@@ -138,8 +138,12 @@ All AI weights are configurable in `src/ai/decision-engine.ts`.
 - **Rulers** govern from capital cities
 - **Lords** control individual settlements as vassals
 - **Diplomacy**: Alliances, rivalries, trade agreements, wars, and truces
-- **Wars** can break out between rival nations
-- **Peace treaties** end prolonged conflicts
+- **Wars** can break out between rival nations (global news that all players hear)
+- **Armies** spawn at capitals and march toward enemy settlements
+- **Conquest** — Settlements with durability below 20 are captured and change allegiance
+- **Borders shift** as territories are conquered during warfare
+- **Capitals relocate** if conquered, moving to the largest remaining city
+- **Peace treaties** end prolonged conflicts and disband armies
 
 ## Creatures & Events
 
@@ -153,7 +157,9 @@ All AI weights are configurable in `src/ai/decision-engine.ts`.
 
 - Dragon attacks on settlements
 - Bandit raids on poorly defended villages
-- War declarations between rival nations
+- **War declarations** between rival nations (heard globally)
+- **Settlement conquests** as borders are redrawn
+- **Peace treaties** ending conflicts
 - Plagues in dense populations
 - Famines during harsh winters
 - Bountiful harvests in autumn

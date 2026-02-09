@@ -2,7 +2,7 @@ import type { Tile, TerrainType } from '../types/terrain';
 import type { World } from '../types/world';
 import type { BiomeType } from '../types/biome';
 import { SeededRandom } from '../utils/random';
-import { generateElevation, generateTemperature, classifyTerrain } from './terrain-generator';
+import { generateElevation, generateTemperature, classifyTerrain, isAdjacentToOcean } from './terrain-generator';
 import { generateMoisture } from './moisture-generator';
 import { assignBiomes } from './biome-generator';
 import { placeResources } from './resource-placer';
@@ -49,12 +49,25 @@ export function generateWorld(
 
   onProgress?.('Classifying terrain...', 0.15);
 
-  // Classify terrain types
+  // Classify terrain types (first pass)
   const terrainTypes: TerrainType[][] = [];
   for (let y = 0; y < height; y++) {
     terrainTypes[y] = [];
     for (let x = 0; x < width; x++) {
       terrainTypes[y][x] = classifyTerrain(elevation[y][x]);
+    }
+  }
+  
+  // Second pass: identify coast tiles (only 1-tile strip adjacent to ocean)
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const terrain = terrainTypes[y][x];
+      // Only lowland tiles at elevation 4-5 adjacent to ocean become coast
+      if (terrain === 'lowland' && elevation[y][x] >= 4 && elevation[y][x] <= 5) {
+        if (isAdjacentToOcean(x, y, terrainTypes, width, height)) {
+          terrainTypes[y][x] = 'coast';
+        }
+      }
     }
   }
 
@@ -77,13 +90,20 @@ export function generateWorld(
     tiles[y] = [];
     for (let x = 0; x < width; x++) {
       const biomeDef = BIOME_DEFINITIONS[biomes[y][x]];
+      const terrain = terrainTypes[y][x];
+      // Normalize ocean and coast to sea level (4) - completely flat surface
+      let normalizedElevation = elevation[y][x];
+      if (terrain === 'deep_ocean' || terrain === 'shallow_ocean' || terrain === 'coast') {
+        normalizedElevation = 4;
+      }
+      
       tiles[y][x] = {
         x,
         y,
-        elevation: elevation[y][x],
+        elevation: normalizedElevation,
         moisture: moisture[y][x],
         temperature: temperature[y][x],
-        terrainType: terrainTypes[y][x],
+        terrainType: terrain,
         biome: biomes[y][x],
         vegetation: (biomeDef?.vegetationDensity ?? 0) * (0.7 + rng.next() * 0.3),
         features: [],

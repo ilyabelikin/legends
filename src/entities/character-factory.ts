@@ -20,17 +20,17 @@ const JOB_WEIGHTS: Record<string, [JobType, number][]> = {
 
 /** Population targets for location types */
 const POPULATION_TARGETS: Record<string, [number, number]> = {
-  homestead: [2, 4],
-  hamlet: [5, 12],
-  village: [12, 25],
-  town: [25, 50],
-  city: [50, 80],
-  mine: [3, 8],
-  farm: [2, 6],
-  lumber_camp: [3, 6],
-  fishing_village: [6, 15],
-  port: [15, 30],
-  castle: [10, 25],
+  homestead: [4, 8],
+  hamlet: [15, 30],
+  village: [40, 80],
+  town: [100, 200],
+  city: [200, 400],
+  mine: [10, 25],
+  farm: [6, 15],
+  lumber_camp: [8, 20],
+  fishing_village: [20, 40],
+  port: [60, 120],
+  castle: [40, 100],
 };
 
 /** Create a single character */
@@ -77,6 +77,10 @@ export function createCharacter(
     currentAction: null,
     destination: null,
     turnsUntilArrival: 0,
+    
+    onDuty: false,
+    dutyWanderRadius: 0,
+    turnsOnDuty: 0,
 
     title: null,
     lordId: null,

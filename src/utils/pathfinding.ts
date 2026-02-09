@@ -1,5 +1,5 @@
-import type { Position, Tile } from '../types/terrain';
-import { getNeighbors4, manhattanDist } from './math';
+import type { Position, Tile } from "../types/terrain";
+import { getNeighbors4, manhattanDist } from "./math";
 
 /** Priority queue entry for A* */
 interface PQEntry {
@@ -11,7 +11,9 @@ interface PQEntry {
 class MinHeap {
   private data: PQEntry[] = [];
 
-  get size(): number { return this.data.length; }
+  get size(): number {
+    return this.data.length;
+  }
 
   push(entry: PQEntry): void {
     this.data.push(entry);
@@ -65,6 +67,7 @@ function posKey(p: Position): string {
  * @param width World width
  * @param height World height
  * @param costFn Function that returns movement cost for a tile (Infinity = impassable)
+ *               Takes (x, y, fromX?, fromY?) where from* are the previous tile coordinates
  * @returns Array of positions from start to end (inclusive), or empty if no path
  */
 export function findPath(
@@ -72,7 +75,7 @@ export function findPath(
   end: Position,
   width: number,
   height: number,
-  costFn: (x: number, y: number) => number,
+  costFn: (x: number, y: number, fromX?: number, fromY?: number) => number,
 ): Position[] {
   const openSet = new MinHeap();
   const cameFrom = new Map<string, Position>();
@@ -109,7 +112,12 @@ export function findPath(
       const nKey = posKey(neighbor);
       if (closedSet.has(nKey)) continue;
 
-      const moveCost = costFn(neighbor.x, neighbor.y);
+      const moveCost = costFn(
+        neighbor.x,
+        neighbor.y,
+        current.pos.x,
+        current.pos.y,
+      );
       if (moveCost >= Infinity) continue;
 
       const tentativeG = (gScore.get(currentKey) ?? Infinity) + moveCost;

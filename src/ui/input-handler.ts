@@ -1,7 +1,7 @@
-import type { GameEngine } from '../game/game-engine';
-import type { Renderer } from '../render/renderer';
-import type { HUD } from './hud';
-import { TILE_WIDTH, TILE_HEIGHT, ELEVATION_HEIGHT } from '../render/camera';
+import type { GameEngine } from "../game/game-engine";
+import type { Renderer } from "../render/renderer";
+import type { HUD } from "./hud";
+import { TILE_WIDTH, TILE_HEIGHT, ELEVATION_HEIGHT } from "../render/camera";
 
 /**
  * Handles all player input: keyboard, mouse, and touch.
@@ -28,10 +28,14 @@ export class InputHandler {
   private isPanning = false;
   private lastMouseX = 0;
   private lastMouseY = 0;
-  private dragDistance = 0;      // track drag distance to distinguish click vs drag
+  private dragDistance = 0; // track drag distance to distinguish click vs drag
   private keysDown = new Set<string>();
 
-  constructor(engine: GameEngine, renderer: Renderer, canvas: HTMLCanvasElement) {
+  constructor(
+    engine: GameEngine,
+    renderer: Renderer,
+    canvas: HTMLCanvasElement,
+  ) {
     this.engine = engine;
     this.renderer = renderer;
     this.canvas = canvas;
@@ -45,18 +49,22 @@ export class InputHandler {
   }
 
   private setupEventListeners(): void {
-    window.addEventListener('keydown', (e) => this.onKeyDown(e));
-    window.addEventListener('keyup', (e) => this.onKeyUp(e));
+    window.addEventListener("keydown", (e) => this.onKeyDown(e));
+    window.addEventListener("keyup", (e) => this.onKeyUp(e));
 
-    this.canvas.addEventListener('mousedown', (e) => this.onMouseDown(e));
-    this.canvas.addEventListener('mousemove', (e) => this.onMouseMove(e));
-    this.canvas.addEventListener('mouseup', (e) => this.onMouseUp(e));
-    this.canvas.addEventListener('wheel', (e) => this.onWheel(e), { passive: false });
-    this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    this.canvas.addEventListener("mousedown", (e) => this.onMouseDown(e));
+    this.canvas.addEventListener("mousemove", (e) => this.onMouseMove(e));
+    this.canvas.addEventListener("mouseup", (e) => this.onMouseUp(e));
+    this.canvas.addEventListener("wheel", (e) => this.onWheel(e), {
+      passive: false,
+    });
+    this.canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
-    this.canvas.addEventListener('touchstart', (e) => this.onTouchStart(e));
-    this.canvas.addEventListener('touchmove', (e) => this.onTouchMove(e), { passive: false });
-    this.canvas.addEventListener('touchend', () => this.onTouchEnd());
+    this.canvas.addEventListener("touchstart", (e) => this.onTouchStart(e));
+    this.canvas.addEventListener("touchmove", (e) => this.onTouchMove(e), {
+      passive: false,
+    });
+    this.canvas.addEventListener("touchend", () => this.onTouchEnd());
   }
 
   // ── Keyboard ──────────────────────────────────────────
@@ -71,23 +79,23 @@ export class InputHandler {
     }
 
     // Toggle inventory panel (always allowed)
-    if (e.key === 'i' || e.key === 'I') {
+    if (e.key === "i" || e.key === "I") {
       if (this.hud) {
-        this.hud.openInventoryTab('inventory');
+        this.hud.openInventoryTab("inventory");
       }
       return;
     }
 
     // Open inventory to Market tab (always allowed)
-    if (e.key === 'm' || e.key === 'M') {
+    if (e.key === "m" || e.key === "M") {
       if (this.hud) {
-        this.hud.openInventoryTab('market');
+        this.hud.openInventoryTab("market");
       }
       return;
     }
 
     // Close inventory with Escape
-    if (e.key === 'Escape' && this.hud?.isInventoryOpen()) {
+    if (e.key === "Escape" && this.hud?.isInventoryOpen()) {
       this.hud.toggleInventory();
       return;
     }
@@ -99,7 +107,8 @@ export class InputHandler {
 
     switch (e.key) {
       // End turn
-      case 'Enter': case ' ':
+      case "Enter":
+      case " ":
         console.log(`[InputHandler] Space/Enter detected, calling endTurn()`);
         e.preventDefault();
         this.engine.cancelMovement();
@@ -107,7 +116,8 @@ export class InputHandler {
         break;
 
       // Center camera on party
-      case 'c': case 'C':
+      case "c":
+      case "C":
         this.renderer.camera.centerOnTile(
           state.party.position.x,
           state.party.position.y,
@@ -115,39 +125,41 @@ export class InputHandler {
         break;
 
       // Rest
-      case 'r': case 'R':
+      case "r":
+      case "R":
         this.engine.cancelMovement();
         this.engine.rest();
         break;
 
       // Hunt wild game
-      case 'h': case 'H':
+      case "h":
+      case "H":
         this.engine.cancelMovement();
         this.engine.hunt();
         break;
 
-      // Embark / disembark at pier
-      case 'b': case 'B':
-        this.engine.cancelMovement();
-        this.engine.embark();
-        break;
-
       // Escape — cancel movement
-      case 'Escape':
+      case "Escape":
         this.engine.cancelMovement();
         state.selectedTile = null;
         break;
 
       // Zoom
-      case '+': case '=':
-        this.renderer.camera.zoomAt(1.2,
+      case "+":
+      case "=":
+        this.renderer.camera.zoomAt(
+          1.2,
           this.renderer.camera.screenWidth / 2,
-          this.renderer.camera.screenHeight / 2);
+          this.renderer.camera.screenHeight / 2,
+        );
         break;
-      case '-': case '_':
-        this.renderer.camera.zoomAt(0.8,
+      case "-":
+      case "_":
+        this.renderer.camera.zoomAt(
+          0.8,
           this.renderer.camera.screenWidth / 2,
-          this.renderer.camera.screenHeight / 2);
+          this.renderer.camera.screenHeight / 2,
+        );
         break;
     }
   }
@@ -192,7 +204,10 @@ export class InputHandler {
 
     // Let inventory handle clicks when open
     if (this.hud?.isInventoryOpen()) {
-      if (e.button === 0 && this.hud?.handleInventoryClick(e.clientX, e.clientY)) {
+      if (
+        e.button === 0 &&
+        this.hud?.handleInventoryClick(e.clientX, e.clientY)
+      ) {
         return;
       }
       // Block other clicks when inventory is open
@@ -206,7 +221,10 @@ export class InputHandler {
 
     // Minimap click → center camera on that point
     const mmTile = this.renderer.handleMinimapClick(
-      e.clientX, e.clientY, state.world.width, state.world.height,
+      e.clientX,
+      e.clientY,
+      state.world.width,
+      state.world.height,
     );
     if (mmTile) {
       this.renderer.camera.centerOnTile(mmTile.tx, mmTile.ty);
@@ -264,8 +282,12 @@ export class InputHandler {
   /**
    * Convert a screen position to the tile the user is pointing at,
    * accounting for elevation offset in the isometric view.
+   * With discrete elevation levels, we can directly calculate the correct tile.
    */
-  private pickTile(screenX: number, screenY: number): { x: number; y: number } | null {
+  private pickTile(
+    screenX: number,
+    screenY: number,
+  ): { x: number; y: number } | null {
     const state = this.engine.state;
     if (!state) return null;
 
@@ -280,16 +302,21 @@ export class InputHandler {
     tx = Math.max(0, Math.min(state.world.width - 1, tx));
     ty = Math.max(0, Math.min(state.world.height - 1, ty));
 
-    // Second pass — correct for the tile's elevation
+    // Single refinement to account for elevation (discrete levels make this reliable)
     const tile = state.world.tiles[ty][tx];
-    const elevOffset = Math.floor(tile.elevation * 5) * ELEVATION_HEIGHT;
+    const elevOffset = tile.elevation * ELEVATION_HEIGHT;
     const corrWy = wy + elevOffset;
-    const cx = Math.round((wx / (TILE_WIDTH / 2) + corrWy / (TILE_HEIGHT / 2)) / 2);
-    const cy = Math.round((corrWy / (TILE_HEIGHT / 2) - wx / (TILE_WIDTH / 2)) / 2);
+    const cx = Math.round(
+      (wx / (TILE_WIDTH / 2) + corrWy / (TILE_HEIGHT / 2)) / 2,
+    );
+    const cy = Math.round(
+      (corrWy / (TILE_HEIGHT / 2) - wx / (TILE_WIDTH / 2)) / 2,
+    );
 
-    const fx = Math.max(0, Math.min(state.world.width - 1, cx));
-    const fy = Math.max(0, Math.min(state.world.height - 1, cy));
-    return { x: fx, y: fy };
+    tx = Math.max(0, Math.min(state.world.width - 1, cx));
+    ty = Math.max(0, Math.min(state.world.height - 1, cy));
+
+    return { x: tx, y: ty };
   }
 
   // ── Continuous Camera Pan (called every frame) ────────
@@ -307,10 +334,10 @@ export class InputHandler {
     let dy = 0;
 
     // WASD and arrow keys both pan the camera
-    if (this.keysDown.has('a') || this.keysDown.has('arrowleft'))  dx += speed;
-    if (this.keysDown.has('d') || this.keysDown.has('arrowright')) dx -= speed;
-    if (this.keysDown.has('w') || this.keysDown.has('arrowup'))   dy += speed;
-    if (this.keysDown.has('s') || this.keysDown.has('arrowdown')) dy -= speed;
+    if (this.keysDown.has("a") || this.keysDown.has("arrowleft")) dx += speed;
+    if (this.keysDown.has("d") || this.keysDown.has("arrowright")) dx -= speed;
+    if (this.keysDown.has("w") || this.keysDown.has("arrowup")) dy += speed;
+    if (this.keysDown.has("s") || this.keysDown.has("arrowdown")) dy -= speed;
 
     if (dx !== 0 || dy !== 0) {
       this.renderer.camera.pan(dx, dy);

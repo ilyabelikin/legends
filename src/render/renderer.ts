@@ -1,15 +1,16 @@
-import type { GameState } from '../types/game';
-import type { World } from '../types/world';
-import type { Tile } from '../types/terrain';
-import type { Location } from '../types/location';
-import type { Creature } from '../types/creature';
-import { Camera, TILE_WIDTH, TILE_HEIGHT, ELEVATION_HEIGHT } from './camera';
-import { getTerrainSprite, type TerrainLayer } from './sprites/terrain-sprites';
-import { getBuildingSprite } from './sprites/building-sprites';
-import { getPartySprite, getCreatureSprite } from './sprites/entity-sprites';
-import { PALETTE, hexToRgba } from './palette';
-import type { BiomeType } from '../types/biome';
-import type { Season } from '../types/season';
+import type { GameState } from "../types/game";
+import type { World } from "../types/world";
+import type { Tile } from "../types/terrain";
+import type { Location } from "../types/location";
+import type { Creature, CreatureType } from "../types/creature";
+import type { Character } from "../types/character";
+import { Camera, TILE_WIDTH, TILE_HEIGHT, ELEVATION_HEIGHT } from "./camera";
+import { getTerrainSprite, type TerrainLayer } from "./sprites/terrain-sprites";
+import { getBuildingSprite } from "./sprites/building-sprites";
+import { getPartySprite, getCreatureSprite } from "./sprites/entity-sprites";
+import { PALETTE, hexToRgba } from "./palette";
+import type { BiomeType } from "../types/biome";
+import type { Season } from "../types/season";
 
 /** Main game renderer */
 export class Renderer {
@@ -23,7 +24,7 @@ export class Renderer {
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
-    this.ctx = canvas.getContext('2d')!;
+    this.ctx = canvas.getContext("2d")!;
     this.camera = new Camera(canvas.width, canvas.height);
 
     // Pixel-perfect rendering
@@ -70,7 +71,7 @@ export class Renderer {
     // Pass 1: Ground (elevation walls + diamond + texture) — back-to-front
     for (let y = range.minY; y <= range.maxY; y++) {
       for (let x = range.minX; x <= range.maxX; x++) {
-        this.renderTileLayer(ctx, world.tiles[y][x], season, 'ground');
+        this.renderTileLayer(ctx, world.tiles[y][x], season, "ground");
       }
     }
 
@@ -82,13 +83,14 @@ export class Renderer {
 
         const sx = (x - y) * (TILE_WIDTH / 2);
         const sy = (x + y) * (TILE_HEIGHT / 2);
-        const elevOffset = Math.floor(tile.elevation * 5) * ELEVATION_HEIGHT;
+        const elevOffset = tile.elevation * ELEVATION_HEIGHT;
 
         if (tile.roadLevel > 0) {
           this.renderRoad(ctx, tile, sx, sy - elevOffset, world);
         }
-        if (tile.features.some(f => f.type === 'pier')) {
-          this.renderPier(ctx, sx, sy - elevOffset);
+        const pierFeature = tile.features.find((f) => f.type === "pier");
+        if (pierFeature) {
+          this.renderPier(ctx, sx, sy - elevOffset, pierFeature.direction ?? 0);
         }
       }
     }
@@ -97,7 +99,7 @@ export class Renderer {
     // Pass 3: Vegetation (trees, bushes) — on top of roads
     for (let y = range.minY; y <= range.maxY; y++) {
       for (let x = range.minX; x <= range.maxX; x++) {
-        this.renderTileLayer(ctx, world.tiles[y][x], season, 'vegetation');
+        this.renderTileLayer(ctx, world.tiles[y][x], season, "vegetation");
       }
     }
 
@@ -108,7 +110,8 @@ export class Renderer {
         if (tile.locationId && tile.explored) {
           const loc = world.locations.get(tile.locationId);
           if (loc) {
-            const countryColor = world.countries.get(loc.countryId ?? '')?.color ?? null;
+            const countryColor =
+              world.countries.get(loc.countryId ?? "")?.color ?? null;
             this.renderLocation(ctx, loc, countryColor, tile.elevation);
 
             // Burning overlay when on fire
@@ -130,23 +133,23 @@ export class Renderer {
     let enemyCombatOffset = { x: 0, y: 0 };
     let partyRotation = 0;
     let enemyRotation = 0;
-    
+
     if (combatAnim && combatAnim.active) {
       const elapsed = Date.now() - combatAnim.startTime;
       const progress = Math.min(elapsed / combatAnim.duration, 1);
-      
+
       // Oscillate back and forth (sine wave)
       const oscillation = Math.sin(progress * Math.PI * 2 * combatAnim.rounds);
       const amplitude = 2; // pixels to move side-to-side (reduced for subtlety)
-      
+
       partyCombatOffset = { x: oscillation * amplitude, y: 0 };
       enemyCombatOffset = { x: -oscillation * amplitude, y: 0 }; // opposite direction
-      
+
       // Add rotation/leaning (tilt back and forth)
       const rotationAmplitude = 0.15; // radians (~8.5 degrees)
       partyRotation = oscillation * rotationAmplitude;
       enemyRotation = -oscillation * rotationAmplitude; // opposite lean
-      
+
       // Clean up animation when done
       if (progress >= 1) {
         // Remove dead enemies after animation
@@ -155,11 +158,14 @@ export class Renderer {
           // Calculate offset if creature was on same tile as party
           let offsetX = 0;
           let offsetY = 0;
-          if (enemy.position.x === party.position.x && enemy.position.y === party.position.y) {
+          if (
+            enemy.position.x === party.position.x &&
+            enemy.position.y === party.position.y
+          ) {
             offsetX = 12;
             offsetY = 6;
           }
-          
+
           // Add blood splash before removing creature
           world.bloodSplashes.push({
             x: enemy.position.x,
@@ -167,7 +173,7 @@ export class Renderer {
             offsetX,
             offsetY,
             createdTurn: state.turn,
-            creatureType: enemy.type
+            creatureType: enemy.type,
           });
           world.creatures.delete(combatAnim.enemyId);
         }
@@ -178,13 +184,54 @@ export class Renderer {
     // Render creatures (only on visible tiles)
     for (const creature of world.creatures.values()) {
       const { x, y } = creature.position;
-      if (x >= range.minX && x <= range.maxX && y >= range.minY && y <= range.maxY) {
+      if (
+        x >= range.minX &&
+        x <= range.maxX &&
+        y >= range.minY &&
+        y <= range.maxY
+      ) {
         const tile = world.tiles[y][x];
         if (tile.visible) {
           // Apply combat offset and rotation if this creature is in combat
-          const offset = (combatAnim && combatAnim.enemyId === creature.id) ? enemyCombatOffset : { x: 0, y: 0 };
-          const rot = (combatAnim && combatAnim.enemyId === creature.id) ? enemyRotation : 0;
-          this.renderCreature(ctx, creature, tile.elevation, party.position, offset, rot);
+          const offset =
+            combatAnim && combatAnim.enemyId === creature.id
+              ? enemyCombatOffset
+              : { x: 0, y: 0 };
+          const rot =
+            combatAnim && combatAnim.enemyId === creature.id
+              ? enemyRotation
+              : 0;
+          this.renderCreature(
+            ctx,
+            creature,
+            tile.elevation,
+            party.position,
+            offset,
+            rot,
+          );
+        }
+      }
+    }
+
+    // Render characters on duty (guards, hunters patrolling/hunting)
+    for (const character of world.characters.values()) {
+      if (!character.onDuty || !character.isAlive) continue;
+
+      const { x, y } = character.position;
+      if (
+        x >= range.minX &&
+        x <= range.maxX &&
+        y >= range.minY &&
+        y <= range.maxY
+      ) {
+        const tile = world.tiles[y][x];
+        if (tile.visible) {
+          this.renderCharacterOnDuty(
+            ctx,
+            character,
+            tile.elevation,
+            party.position,
+          );
         }
       }
     }
@@ -192,21 +239,31 @@ export class Renderer {
     // Render player party
     const partyOffset = combatAnim ? partyCombatOffset : { x: 0, y: 0 };
     const partyRot = combatAnim ? partyRotation : 0;
-    this.renderParty(ctx, party.position.x, party.position.y,
+    this.renderParty(
+      ctx,
+      party.position.x,
+      party.position.y,
       world.tiles[party.position.y]?.[party.position.x]?.elevation ?? 0.3,
-      party.isSailing, partyOffset, partyRot);
+      party.isSailing,
+      partyOffset,
+      partyRot,
+    );
 
     // Render selection highlight
     if (state.selectedTile) {
-      this.renderSelectionHighlight(ctx, state.selectedTile.x, state.selectedTile.y,
-        world.tiles[state.selectedTile.y]?.[state.selectedTile.x]?.elevation ?? 0.3);
+      this.renderSelectionHighlight(
+        ctx,
+        state.selectedTile.x,
+        state.selectedTile.y,
+        world.tiles[state.selectedTile.y]?.[state.selectedTile.x]?.elevation ??
+          0.3,
+      );
     }
 
     // Render blood splashes
     this.renderBloodSplashes(ctx, world, state.turn, range);
 
-    // Render country borders and names
-    this.renderCountryBorders(ctx, world, range);
+    // Render country names (borders disabled - too cluttered)
     this.renderCountryNames(ctx, state);
 
     // Render smooth fog of war (in world space, on top of everything)
@@ -252,7 +309,7 @@ export class Renderer {
    * so roads follow the terrain instead of jumping between heights.
    */
   /**
-   * Render road on tile — soft curved segments with transparency
+   * Render road on tile — soft curved segments blended with tile color
    * so they look like natural dirt/stone tracks.
    */
   private renderRoad(
@@ -260,31 +317,43 @@ export class Renderer {
     tile: Tile,
     sx: number,
     sy: number,
-    world: GameState['world'],
+    world: GameState["world"],
   ): void {
     const level = tile.roadLevel;
 
-    // Semi-transparent earthy colours
-    const color = level >= 3 ? 'rgba(180,170,155,0.6)'
-      : level >= 2 ? 'rgba(150,135,115,0.55)'
-      : 'rgba(130,110,80,0.45)';
+    // Get tile's base color
+    const tileColor = this.getTileBaseColor(tile);
+    
+    // Road colors (without transparency)
+    const roadBase =
+      level >= 3
+        ? { r: 180, g: 170, b: 155 }
+        : level >= 2
+          ? { r: 150, g: 135, b: 115 }
+          : { r: 130, g: 110, b: 80 };
+    
+    // Blend road color with tile color (mix in about 30% of tile color)
+    const blendFactor = 0.3;
+    const blendedColor = this.blendColors(tileColor, roadBase, blendFactor);
+    const color = `rgb(${blendedColor.r},${blendedColor.g},${blendedColor.b})`;
+    
     const lineW = level >= 3 ? 5 : level >= 2 ? 4 : 3;
 
     ctx.strokeStyle = color;
     ctx.lineWidth = lineW;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
 
-    const thisElev = Math.floor(tile.elevation * 5) * ELEVATION_HEIGHT;
+    const thisElev = tile.elevation * ELEVATION_HEIGHT;
 
     // Deterministic wobble per tile so curves are consistent across frames
     const wobble = ((tile.x * 7 + tile.y * 13) % 5) - 2; // -2 to +2
 
     const dirs: { dx: number; dy: number; isoX: number; isoY: number }[] = [
-      { dx:  1, dy:  0, isoX:  TILE_WIDTH / 2, isoY:  TILE_HEIGHT / 2 },
-      { dx: -1, dy:  0, isoX: -TILE_WIDTH / 2, isoY: -TILE_HEIGHT / 2 },
-      { dx:  0, dy:  1, isoX: -TILE_WIDTH / 2, isoY:  TILE_HEIGHT / 2 },
-      { dx:  0, dy: -1, isoX:  TILE_WIDTH / 2, isoY: -TILE_HEIGHT / 2 },
+      { dx: 1, dy: 0, isoX: TILE_WIDTH / 2, isoY: TILE_HEIGHT / 2 },
+      { dx: -1, dy: 0, isoX: -TILE_WIDTH / 2, isoY: -TILE_HEIGHT / 2 },
+      { dx: 0, dy: 1, isoX: -TILE_WIDTH / 2, isoY: TILE_HEIGHT / 2 },
+      { dx: 0, dy: -1, isoX: TILE_WIDTH / 2, isoY: -TILE_HEIGHT / 2 },
     ];
 
     let hasConnection = false;
@@ -296,7 +365,7 @@ export class Renderer {
 
       const neighbor = world.tiles[ny][nx];
       if (neighbor.roadLevel > 0 || neighbor.locationId) {
-        const neighborElev = Math.floor(neighbor.elevation * 5) * ELEVATION_HEIGHT;
+        const neighborElev = neighbor.elevation * ELEVATION_HEIGHT;
         const midElev = (thisElev + neighborElev) / 2;
         const elevDelta = midElev - thisElev;
 
@@ -305,7 +374,7 @@ export class Renderer {
 
         // Control point offset perpendicular to the direction for a gentle curve
         const perpX = -dir.isoY * 0.08 + wobble * 0.4;
-        const perpY =  dir.isoX * 0.08 + wobble * 0.3;
+        const perpY = dir.isoX * 0.08 + wobble * 0.3;
 
         const endX = sx + halfX;
         const endY = sy + halfY - elevDelta;
@@ -335,7 +404,7 @@ export class Renderer {
    */
   private renderWorkingSites(
     ctx: CanvasRenderingContext2D,
-    world: GameState['world'],
+    world: GameState["world"],
     range: { minX: number; maxX: number; minY: number; maxY: number },
   ): void {
     for (const loc of world.locations.values()) {
@@ -343,20 +412,38 @@ export class Renderer {
       const { x: lx, y: ly } = loc.position;
 
       // Check what buildings this settlement has
-      const hasFarms = loc.buildings.some(b => b.type === 'farm_field' && b.isOperational);
-      const hasMines = loc.buildings.some(b => b.type === 'mine_shaft' && b.isOperational);
-      const hasSawmill = loc.buildings.some(b => (b.type === 'sawmill' || b.type === 'hunter_lodge') && b.isOperational);
+      const hasFarms = loc.buildings.some(
+        (b) => b.type === "farm_field" && b.isOperational,
+      );
+      const hasMines = loc.buildings.some(
+        (b) => b.type === "mine_shaft" && b.isOperational,
+      );
+      const hasSawmill = loc.buildings.some(
+        (b) =>
+          (b.type === "sawmill" || b.type === "hunter_lodge") &&
+          b.isOperational,
+      );
 
       if (!hasFarms && !hasMines && !hasSawmill) continue;
 
       // Farm field count determines how many adjacent tiles get fields
-      const farmCount = loc.buildings.filter(b => b.type === 'farm_field').length;
-      const mineCount = loc.buildings.filter(b => b.type === 'mine_shaft').length;
+      const farmCount = loc.buildings.filter(
+        (b) => b.type === "farm_field",
+      ).length;
+      const mineCount = loc.buildings.filter(
+        (b) => b.type === "mine_shaft",
+      ).length;
 
       // Deterministic pattern of adjacent tiles for this location
       const adjacents = [
-        { dx: 1, dy: 0 }, { dx: -1, dy: 0 }, { dx: 0, dy: 1 }, { dx: 0, dy: -1 },
-        { dx: 1, dy: 1 }, { dx: -1, dy: -1 }, { dx: 1, dy: -1 }, { dx: -1, dy: 1 },
+        { dx: 1, dy: 0 },
+        { dx: -1, dy: 0 },
+        { dx: 0, dy: 1 },
+        { dx: 0, dy: -1 },
+        { dx: 1, dy: 1 },
+        { dx: -1, dy: -1 },
+        { dx: 1, dy: -1 },
+        { dx: -1, dy: 1 },
       ];
 
       let farmsPlaced = 0;
@@ -365,38 +452,59 @@ export class Renderer {
       for (const adj of adjacents) {
         const nx = lx + adj.dx;
         const ny = ly + adj.dy;
-        if (nx < range.minX || nx > range.maxX || ny < range.minY || ny > range.maxY) continue;
-        if (nx < 0 || nx >= world.width || ny < 0 || ny >= world.height) continue;
+        if (
+          nx < range.minX ||
+          nx > range.maxX ||
+          ny < range.minY ||
+          ny > range.maxY
+        )
+          continue;
+        if (nx < 0 || nx >= world.width || ny < 0 || ny >= world.height)
+          continue;
 
         const tile = world.tiles[ny][nx];
         if (!tile.explored) continue;
         if (tile.locationId) continue; // don't draw on other settlements
-        if (tile.terrainType === 'deep_ocean' || tile.terrainType === 'shallow_ocean') continue;
+        if (
+          tile.terrainType === "deep_ocean" ||
+          tile.terrainType === "shallow_ocean"
+        )
+          continue;
 
         const sx = (nx - ny) * (TILE_WIDTH / 2);
         const sy = (nx + ny) * (TILE_HEIGHT / 2);
-        const elevOffset = Math.floor(tile.elevation * 5) * ELEVATION_HEIGHT;
+        const elevOffset = tile.elevation * ELEVATION_HEIGHT;
         const cy = sy - elevOffset;
 
         // Draw farm fields on grassland/savanna adjacent tiles
-        if (hasFarms && farmsPlaced < farmCount &&
-            (tile.biome === 'grassland' || tile.biome === 'savanna' || tile.biome === 'forest')) {
+        if (
+          hasFarms &&
+          farmsPlaced < farmCount &&
+          (tile.biome === "grassland" ||
+            tile.biome === "savanna" ||
+            tile.biome === "forest")
+        ) {
           this.drawFieldOverlay(ctx, sx, cy);
           farmsPlaced++;
           continue;
         }
 
         // Draw mine entrance on hills/mountain adjacent tiles
-        if (hasMines && minesPlaced < mineCount &&
-            (tile.biome === 'hills' || tile.biome === 'mountain')) {
+        if (
+          hasMines &&
+          minesPlaced < mineCount &&
+          (tile.biome === "hills" || tile.biome === "mountain")
+        ) {
           this.drawMineOverlay(ctx, sx, cy);
           minesPlaced++;
           continue;
         }
 
         // Draw lumber stumps on forest adjacent tiles
-        if (hasSawmill &&
-            (tile.biome === 'forest' || tile.biome === 'dense_forest')) {
+        if (
+          hasSawmill &&
+          (tile.biome === "forest" || tile.biome === "dense_forest")
+        ) {
           this.drawStumpOverlay(ctx, sx, cy);
         }
       }
@@ -404,7 +512,11 @@ export class Renderer {
   }
 
   /** Draw crop field rows on a tile — isometric diagonal rows */
-  private drawFieldOverlay(ctx: CanvasRenderingContext2D, sx: number, cy: number): void {
+  private drawFieldOverlay(
+    ctx: CanvasRenderingContext2D,
+    sx: number,
+    cy: number,
+  ): void {
     // Plowed earth — isometric rows running NE-SW across the diamond
     const rows = 7;
     const rowSpacing = TILE_HEIGHT / (rows + 1);
@@ -417,53 +529,67 @@ export class Renderer {
       if (halfW < 2) continue;
 
       // Soil row
-      ctx.fillStyle = i % 2 === 0 ? 'rgba(138,112,64,0.5)' : 'rgba(110,90,50,0.45)';
+      ctx.fillStyle =
+        i % 2 === 0 ? "rgba(138,112,64,0.5)" : "rgba(110,90,50,0.45)";
       ctx.fillRect(sx - halfW, ry, halfW * 2, 1);
 
       // Crop row (green/wheat alternating)
-      ctx.fillStyle = i % 2 === 0 ? 'rgba(104,160,48,0.6)' : 'rgba(200,176,64,0.55)';
+      ctx.fillStyle =
+        i % 2 === 0 ? "rgba(104,160,48,0.6)" : "rgba(200,176,64,0.55)";
       ctx.fillRect(sx - halfW + 2, ry - 1, halfW * 2 - 4, 1);
     }
   }
 
   /** Draw mine entrance on a tile */
-  private drawMineOverlay(ctx: CanvasRenderingContext2D, sx: number, cy: number): void {
+  private drawMineOverlay(
+    ctx: CanvasRenderingContext2D,
+    sx: number,
+    cy: number,
+  ): void {
     // Dark entrance
-    ctx.fillStyle = '#2a2a2a';
+    ctx.fillStyle = "#2a2a2a";
     ctx.fillRect(sx - 5, cy - 4, 10, 6);
     // Wooden frame
-    ctx.fillStyle = '#6a4a20';
+    ctx.fillStyle = "#6a4a20";
     ctx.fillRect(sx - 6, cy - 5, 12, 2);
     ctx.fillRect(sx - 6, cy - 5, 2, 8);
     ctx.fillRect(sx + 4, cy - 5, 2, 8);
     // Ore pile
-    ctx.fillStyle = '#7a6a5a';
+    ctx.fillStyle = "#7a6a5a";
     ctx.fillRect(sx + 7, cy - 1, 4, 2);
-    ctx.fillStyle = '#5a4a3a';
+    ctx.fillStyle = "#5a4a3a";
     ctx.fillRect(sx + 8, cy - 2, 2, 1);
     // Cart track
-    ctx.fillStyle = '#5a4a30';
+    ctx.fillStyle = "#5a4a30";
     ctx.fillRect(sx - 2, cy + 2, 8, 1);
   }
 
   /** Draw lumber stumps on a tile */
-  private drawStumpOverlay(ctx: CanvasRenderingContext2D, sx: number, cy: number): void {
+  private drawStumpOverlay(
+    ctx: CanvasRenderingContext2D,
+    sx: number,
+    cy: number,
+  ): void {
     // Tree stumps
-    ctx.fillStyle = '#6a5028';
+    ctx.fillStyle = "#6a5028";
     ctx.fillRect(sx - 6, cy, 4, 3);
     ctx.fillRect(sx + 4, cy - 2, 3, 3);
     // Log pile
-    ctx.fillStyle = '#7a5a30';
+    ctx.fillStyle = "#7a5a30";
     ctx.fillRect(sx - 2, cy + 1, 6, 2);
-    ctx.fillStyle = '#8a6a3a';
+    ctx.fillStyle = "#8a6a3a";
     ctx.fillRect(sx - 1, cy, 4, 1);
   }
 
   /** Render fire overlay on a burning settlement */
-  private renderBurning(ctx: CanvasRenderingContext2D, tile: Tile, burningTurns: number): void {
+  private renderBurning(
+    ctx: CanvasRenderingContext2D,
+    tile: Tile,
+    burningTurns: number,
+  ): void {
     const sx = (tile.x - tile.y) * (TILE_WIDTH / 2);
     const sy = (tile.x + tile.y) * (TILE_HEIGHT / 2);
-    const elevOffset = Math.floor(tile.elevation * 5) * ELEVATION_HEIGHT;
+    const elevOffset = tile.elevation * ELEVATION_HEIGHT;
     const intensity = Math.min(1, burningTurns / 3); // stronger fire with more turns
 
     const t = this.animationTime * 4;
@@ -498,42 +624,132 @@ export class Renderer {
   private renderSmoke(ctx: CanvasRenderingContext2D, tile: Tile): void {
     const sx = (tile.x - tile.y) * (TILE_WIDTH / 2);
     const sy = (tile.x + tile.y) * (TILE_HEIGHT / 2);
-    const elevOffset = Math.floor(tile.elevation * 5) * ELEVATION_HEIGHT;
+    const elevOffset = tile.elevation * ELEVATION_HEIGHT;
     const t = this.animationTime * 2;
 
     for (let i = 0; i < 4; i++) {
       const smokeX = sx - 8 + i * 5 + Math.sin(t + i * 1.5) * 3;
-      const smokeY = sy - elevOffset - 30 - (t * 2 + i * 8) % 20;
+      const smokeY = sy - elevOffset - 30 - ((t * 2 + i * 8) % 20);
       const alpha = Math.max(0, 0.25 - ((t + i * 3) % 5) * 0.05);
       ctx.fillStyle = `rgba(80,70,60,${alpha.toFixed(2)})`;
       ctx.fillRect(smokeX, smokeY, 4, 3);
     }
   }
 
-  /** Render a pier with a small boat on a water tile */
-  private renderPier(ctx: CanvasRenderingContext2D, sx: number, cy: number): void {
-    // Wooden pier planks
-    ctx.fillStyle = '#8a6a3a';
-    ctx.fillRect(sx - 8, cy - 2, 16, 4);
-    ctx.fillStyle = '#7a5a2a';
-    ctx.fillRect(sx - 6, cy - 1, 12, 2);
-    // Support posts
-    ctx.fillStyle = '#5a4020';
-    ctx.fillRect(sx - 7, cy + 2, 2, 4);
-    ctx.fillRect(sx + 5, cy + 2, 2, 4);
-    // Small boat moored at pier
-    ctx.fillStyle = '#6a5030';
-    ctx.fillRect(sx - 5, cy + 5, 10, 3);
-    ctx.fillStyle = '#8a7040';
-    ctx.fillRect(sx - 4, cy + 5, 8, 2);
+  /** 
+   * Render a pier extending from shore into water
+   * @param direction 0=dy+1(south), 1=dx+1(east), 2=dy-1(north), 3=dx-1(west)
+   * This indicates where the LAND is relative to the water tile
+   */
+  private renderPier(
+    ctx: CanvasRenderingContext2D,
+    sx: number,
+    cy: number,
+    direction: number,
+  ): void {
+    // Isometric diamond corners:
+    // Top: (sx, cy - TILE_HEIGHT/2)
+    // Right: (sx + TILE_WIDTH/2, cy)
+    // Bottom: (sx, cy + TILE_HEIGHT/2)
+    // Left: (sx - TILE_WIDTH/2, cy)
+    //
+    // The edges between corners are where neighboring tiles connect.
+    // Pier should start from the edge where land connects and extend toward center.
+    
+    const pierWidth = 5;
+    
+    // Calculate start and end points along the diamond edge toward center
+    let pierPoints: { x: number; y: number }[] = [];
+    
+    switch (direction) {
+      case 0: // Land at dy+1 (south): Shared edge is left-to-bottom diagonal
+        // Start near the middle of the left-bottom edge, extend toward center
+        pierPoints = [
+          { x: sx - TILE_WIDTH * 0.35, y: cy + TILE_HEIGHT * 0.15 },
+          { x: sx - TILE_WIDTH * 0.15, y: cy + TILE_HEIGHT * 0.35 },
+          { x: sx, y: cy + TILE_HEIGHT * 0.15 },
+          { x: sx - TILE_WIDTH * 0.15, y: cy },
+        ];
+        break;
+      case 1: // Land at dx+1 (east): Shared edge is bottom-to-right diagonal
+        // Start near the middle of the bottom-right edge, extend toward center
+        pierPoints = [
+          { x: sx + TILE_WIDTH * 0.15, y: cy + TILE_HEIGHT * 0.35 },
+          { x: sx + TILE_WIDTH * 0.35, y: cy + TILE_HEIGHT * 0.15 },
+          { x: sx + TILE_WIDTH * 0.15, y: cy },
+          { x: sx, y: cy + TILE_HEIGHT * 0.15 },
+        ];
+        break;
+      case 2: // Land at dy-1 (north): Shared edge is right-to-top diagonal
+        // Start near the middle of the right-top edge, extend toward center
+        pierPoints = [
+          { x: sx + TILE_WIDTH * 0.35, y: cy - TILE_HEIGHT * 0.15 },
+          { x: sx + TILE_WIDTH * 0.15, y: cy - TILE_HEIGHT * 0.35 },
+          { x: sx, y: cy - TILE_HEIGHT * 0.15 },
+          { x: sx + TILE_WIDTH * 0.15, y: cy },
+        ];
+        break;
+      case 3: // Land at dx-1 (west): Shared edge is top-to-left diagonal
+        // Start near the middle of the top-left edge, extend toward center
+        pierPoints = [
+          { x: sx - TILE_WIDTH * 0.15, y: cy - TILE_HEIGHT * 0.35 },
+          { x: sx - TILE_WIDTH * 0.35, y: cy - TILE_HEIGHT * 0.15 },
+          { x: sx - TILE_WIDTH * 0.15, y: cy },
+          { x: sx, y: cy - TILE_HEIGHT * 0.15 },
+        ];
+        break;
+    }
+    
+    // Draw pier as a quadrilateral (wooden deck)
+    ctx.fillStyle = "#9a7a4a";
+    ctx.beginPath();
+    ctx.moveTo(pierPoints[0].x, pierPoints[0].y);
+    for (let i = 1; i < pierPoints.length; i++) {
+      ctx.lineTo(pierPoints[i].x, pierPoints[i].y);
+    }
+    ctx.closePath();
+    ctx.fill();
+    
+    // Draw wooden planks across the pier
+    ctx.strokeStyle = "#7a5a2a";
+    ctx.lineWidth = 1.5;
+    for (let i = 1; i <= 3; i++) {
+      const t = i / 4;
+      ctx.beginPath();
+      ctx.moveTo(
+        pierPoints[0].x + (pierPoints[1].x - pierPoints[0].x) * t,
+        pierPoints[0].y + (pierPoints[1].y - pierPoints[0].y) * t
+      );
+      ctx.lineTo(
+        pierPoints[3].x + (pierPoints[2].x - pierPoints[3].x) * t,
+        pierPoints[3].y + (pierPoints[2].y - pierPoints[3].y) * t
+      );
+      ctx.stroke();
+    }
+    
+    // Support posts at the shore edge
+    ctx.fillStyle = "#5a4020";
+    ctx.fillRect(pierPoints[0].x - 1, pierPoints[0].y, 2, 4);
+    ctx.fillRect(pierPoints[1].x - 1, pierPoints[1].y, 2, 4);
+    
+    // Small boat moored at the inner end of the pier
+    const boatX = (pierPoints[2].x + pierPoints[3].x) / 2;
+    const boatY = (pierPoints[2].y + pierPoints[3].y) / 2;
+    
+    ctx.fillStyle = "#6a5030";
+    ctx.fillRect(boatX - 5, boatY + 2, 10, 3);
+    ctx.fillStyle = "#8a7040";
+    ctx.fillRect(boatX - 4, boatY + 2, 8, 2);
+    
     // Mast
-    ctx.fillStyle = '#5a4020';
-    ctx.fillRect(sx, cy + 1, 1, 5);
-    // Sail
-    ctx.fillStyle = '#d8d0c0';
-    ctx.fillRect(sx + 1, cy + 1, 3, 3);
-    ctx.fillStyle = '#c8c0b0';
-    ctx.fillRect(sx + 1, cy + 2, 2, 2);
+    ctx.fillStyle = "#5a4020";
+    ctx.fillRect(boatX, boatY - 3, 1, 6);
+    
+    // Small sail
+    ctx.fillStyle = "#d8d0c0";
+    ctx.fillRect(boatX + 1, boatY - 2, 3, 3);
+    ctx.fillStyle = "#c8c0b0";
+    ctx.fillRect(boatX + 1, boatY - 1, 2, 2);
   }
 
   /** Render a location (settlement) */
@@ -546,32 +762,37 @@ export class Renderer {
     const { x, y } = loc.position;
     const sx = (x - y) * (TILE_WIDTH / 2);
     const sy = (x + y) * (TILE_HEIGHT / 2);
-    const elevOffset = Math.floor(elevation * 5) * ELEVATION_HEIGHT;
+    const elevOffset = elevation * ELEVATION_HEIGHT;
 
-    const sprite = getBuildingSprite(loc.type, loc.size, countryColor, loc.originalType);
+    const sprite = getBuildingSprite(
+      loc.type,
+      loc.size,
+      countryColor,
+      loc.originalType,
+    );
     ctx.drawImage(sprite, sx - 24, sy - elevOffset - 40);
 
     // Location name label — dimmed for ruins
-    ctx.font = '7px monospace';
-    ctx.textAlign = 'center';
+    ctx.font = "7px monospace";
+    ctx.textAlign = "center";
     const label = loc.isDestroyed ? `${loc.name} (ruins)` : loc.name;
-    
+
     // Add dark background for better readability on bright backgrounds
     const textMetrics = ctx.measureText(label);
     const textWidth = textMetrics.width;
     const textHeight = 7; // font size
     const padding = 2;
-    
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+
+    ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
     ctx.fillRect(
       sx - textWidth / 2 - padding,
       sy - elevOffset - 42 - textHeight + 1,
       textWidth + padding * 2,
-      textHeight + padding
+      textHeight + padding,
     );
-    
+
     // Text on top
-    ctx.fillStyle = loc.isDestroyed ? '#b0a090' : PALETTE.uiText;
+    ctx.fillStyle = loc.isDestroyed ? "#b0a090" : PALETTE.uiText;
     ctx.fillText(label, sx, sy - elevOffset - 42);
   }
 
@@ -582,15 +803,18 @@ export class Renderer {
     elevation: number,
     partyPos: { x: number; y: number },
     combatOffset: { x: number; y: number } = { x: 0, y: 0 },
-    rotation: number = 0
+    rotation: number = 0,
   ): void {
     const { x, y } = creature.position;
     let sx = (x - y) * (TILE_WIDTH / 2);
     let sy = (x + y) * (TILE_HEIGHT / 2);
-    const elevOffset = Math.floor(elevation * 5) * ELEVATION_HEIGHT;
+    const elevOffset = elevation * ELEVATION_HEIGHT;
 
     // If creature is on the same tile as the party, offset it slightly to keep it visible
-    if (creature.position.x === partyPos.x && creature.position.y === partyPos.y) {
+    if (
+      creature.position.x === partyPos.x &&
+      creature.position.y === partyPos.y
+    ) {
       // Offset to the bottom-right corner of the tile
       sx += 12;
       sy += 6;
@@ -601,44 +825,123 @@ export class Renderer {
     sy += combatOffset.y;
 
     const sprite = getCreatureSprite(creature.type);
-    
+
     // Apply rotation if in combat
     if (rotation !== 0) {
       ctx.save();
       ctx.translate(sx, sy - elevOffset - 8); // center of sprite
       ctx.rotate(rotation);
       ctx.drawImage(sprite, -8, -8);
-      
+
       // Draw country-colored helmet for guards/armies
-      if ((creature.type === 'guard' || creature.type === 'army') && creature.countryId) {
+      if (
+        (creature.type === "guard" || creature.type === "army") &&
+        creature.countryId
+      ) {
         const country = this.getCountry(creature.countryId);
         if (country) {
           this.drawColoredHelmet(ctx, 0, 0, country.color, creature.type);
         }
       }
-      
+
       ctx.restore();
     } else {
       ctx.drawImage(sprite, sx - 8, sy - elevOffset - 16);
-      
+
       // Draw country-colored helmet for guards/armies
-      if ((creature.type === 'guard' || creature.type === 'army') && creature.countryId) {
+      if (
+        (creature.type === "guard" || creature.type === "army") &&
+        creature.countryId
+      ) {
         const country = this.getCountry(creature.countryId);
         if (country) {
-          this.drawColoredHelmet(ctx, sx, sy - elevOffset - 16, country.color, creature.type);
+          this.drawColoredHelmet(
+            ctx,
+            sx,
+            sy - elevOffset - 16,
+            country.color,
+            creature.type,
+          );
         }
       }
     }
   }
-  
+
+  /** Render a character who is on duty (hunter, guard, etc.) */
+  private renderCharacterOnDuty(
+    ctx: CanvasRenderingContext2D,
+    character: Character,
+    elevation: number,
+    partyPos: { x: number; y: number },
+  ): void {
+    const { x, y } = character.position;
+    let sx = (x - y) * (TILE_WIDTH / 2);
+    let sy = (x + y) * (TILE_HEIGHT / 2);
+    const elevOffset = elevation * ELEVATION_HEIGHT;
+
+    // If character is on the same tile as the party, offset it slightly
+    if (
+      character.position.x === partyPos.x &&
+      character.position.y === partyPos.y
+    ) {
+      sx += 12;
+      sy += 6;
+    }
+
+    // Map character job to creature type for sprite rendering
+    let spriteType: CreatureType;
+    if (character.jobType === "hunter") {
+      spriteType = "hunter";
+    } else if (
+      character.jobType === "guard" ||
+      character.jobType === "soldier"
+    ) {
+      spriteType = "guard";
+    } else {
+      // Fallback for other jobs (shouldn't happen)
+      return;
+    }
+
+    const sprite = getCreatureSprite(spriteType);
+    ctx.drawImage(sprite, sx - 8, sy - elevOffset - 16);
+
+    // Draw country-colored helmet for guards/soldiers
+    if (
+      (character.jobType === "guard" || character.jobType === "soldier") &&
+      character.homeLocationId
+    ) {
+      const homeLoc = this.currentState?.world.locations.get(
+        character.homeLocationId,
+      );
+      if (homeLoc && homeLoc.countryId) {
+        const country = this.getCountry(homeLoc.countryId);
+        if (country) {
+          this.drawColoredHelmet(
+            ctx,
+            sx,
+            sy - elevOffset - 16,
+            country.color,
+            "guard",
+          );
+        }
+      }
+    }
+  }
+
   /** Draw a colored helmet overlay for military units */
-  private drawColoredHelmet(ctx: CanvasRenderingContext2D, sx: number, sy: number, color: string, type: 'guard' | 'army'): void {
-    if (type === 'guard') {
+  private drawColoredHelmet(
+    ctx: CanvasRenderingContext2D,
+    sx: number,
+    sy: number,
+    color: string,
+    type: "guard" | "army",
+  ): void {
+    if (type === "guard") {
       // Guard helmet (single unit)
       ctx.fillStyle = color;
       ctx.fillRect(sx - 2 + 8, sy + 2, 5, 2);
       ctx.fillRect(sx - 1 + 8, sy + 1, 3, 1);
-    } else if (type === 'army') {
+    } else if (type === "army") {
       // Army helmets (multiple units)
       for (let i = -1; i <= 1; i++) {
         const ox = i * 3;
@@ -651,7 +954,7 @@ export class Renderer {
       ctx.fillRect(sx - 1 + 8, sy + 1, 4, 3);
     }
   }
-  
+
   /** Helper to get country from world */
   private getCountry(countryId: string) {
     // Access through the current state that's being rendered
@@ -661,10 +964,18 @@ export class Renderer {
   }
 
   /** Render the player party */
-  private renderParty(ctx: CanvasRenderingContext2D, px: number, py: number, elevation: number, isSailing = false, combatOffset: { x: number; y: number } = { x: 0, y: 0 }, rotation: number = 0): void {
+  private renderParty(
+    ctx: CanvasRenderingContext2D,
+    px: number,
+    py: number,
+    elevation: number,
+    isSailing = false,
+    combatOffset: { x: number; y: number } = { x: 0, y: 0 },
+    rotation: number = 0,
+  ): void {
     let sx = (px - py) * (TILE_WIDTH / 2);
     let sy = (px + py) * (TILE_HEIGHT / 2);
-    const elevOffset = Math.floor(elevation * 5) * ELEVATION_HEIGHT;
+    const elevOffset = elevation * ELEVATION_HEIGHT;
 
     // Apply combat animation offset
     sx += combatOffset.x;
@@ -673,7 +984,13 @@ export class Renderer {
     // Pulsing glow
     const pulse = Math.sin(this.animationTime * 3) * 0.3 + 0.7;
     ctx.fillStyle = hexToRgba(PALETTE.uiHighlight, pulse * 0.3);
-    this.fillIsoDiamond(ctx, sx, sy - elevOffset, TILE_WIDTH + 4, TILE_HEIGHT + 2);
+    this.fillIsoDiamond(
+      ctx,
+      sx,
+      sy - elevOffset,
+      TILE_WIDTH + 4,
+      TILE_HEIGHT + 2,
+    );
 
     if (isSailing) {
       // Draw boat underneath the party
@@ -683,7 +1000,7 @@ export class Renderer {
     // Party sprite (riding on top of boat when sailing)
     const sprite = getPartySprite();
     const yOff = isSailing ? -16 : -20; // sit lower in the boat
-    
+
     // Apply rotation if in combat
     if (rotation !== 0) {
       ctx.save();
@@ -697,9 +1014,13 @@ export class Renderer {
   }
 
   /** Draw a boat sprite for when the party is sailing */
-  private drawPartyBoat(ctx: CanvasRenderingContext2D, sx: number, sy: number): void {
+  private drawPartyBoat(
+    ctx: CanvasRenderingContext2D,
+    sx: number,
+    sy: number,
+  ): void {
     // Hull
-    ctx.fillStyle = '#6a4a28';
+    ctx.fillStyle = "#6a4a28";
     ctx.beginPath();
     ctx.moveTo(sx - 14, sy - 2);
     ctx.lineTo(sx - 10, sy + 4);
@@ -708,16 +1029,16 @@ export class Renderer {
     ctx.closePath();
     ctx.fill();
     // Deck
-    ctx.fillStyle = '#8a6a38';
+    ctx.fillStyle = "#8a6a38";
     ctx.fillRect(sx - 10, sy - 3, 20, 3);
     // Keel bottom
-    ctx.fillStyle = '#5a3a18';
+    ctx.fillStyle = "#5a3a18";
     ctx.fillRect(sx - 8, sy + 3, 16, 2);
     // Mast
-    ctx.fillStyle = '#5a4020';
+    ctx.fillStyle = "#5a4020";
     ctx.fillRect(sx - 1, sy - 18, 2, 16);
     // Sail
-    ctx.fillStyle = '#e0d8c8';
+    ctx.fillStyle = "#e0d8c8";
     ctx.beginPath();
     ctx.moveTo(sx + 1, sy - 17);
     ctx.lineTo(sx + 12, sy - 10);
@@ -725,7 +1046,7 @@ export class Renderer {
     ctx.closePath();
     ctx.fill();
     // Sail shadow
-    ctx.fillStyle = '#c8c0b0';
+    ctx.fillStyle = "#c8c0b0";
     ctx.beginPath();
     ctx.moveTo(sx + 1, sy - 12);
     ctx.lineTo(sx + 8, sy - 8);
@@ -734,7 +1055,7 @@ export class Renderer {
     ctx.fill();
     // Gentle bobbing wave line
     const bob = Math.sin(this.animationTime * 2) * 1;
-    ctx.strokeStyle = 'rgba(90,170,220,0.4)';
+    ctx.strokeStyle = "rgba(90,170,220,0.4)";
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.moveTo(sx - 16, sy + 5 + bob);
@@ -743,10 +1064,15 @@ export class Renderer {
   }
 
   /** Render selection highlight on a tile */
-  private renderSelectionHighlight(ctx: CanvasRenderingContext2D, tx: number, ty: number, elevation: number): void {
+  private renderSelectionHighlight(
+    ctx: CanvasRenderingContext2D,
+    tx: number,
+    ty: number,
+    elevation: number,
+  ): void {
     const sx = (tx - ty) * (TILE_WIDTH / 2);
     const sy = (tx + ty) * (TILE_HEIGHT / 2);
-    const elevOffset = Math.floor(elevation * 5) * ELEVATION_HEIGHT;
+    const elevOffset = elevation * ELEVATION_HEIGHT;
 
     ctx.strokeStyle = PALETTE.uiHighlight;
     ctx.lineWidth = 1.5;
@@ -762,7 +1088,7 @@ export class Renderer {
   /** Render country borders */
   private renderCountryBorders(
     ctx: CanvasRenderingContext2D,
-    world: GameState['world'],
+    world: GameState["world"],
     range: { minX: number; maxX: number; minY: number; maxY: number },
   ): void {
     for (let y = range.minY; y <= range.maxY; y++) {
@@ -776,7 +1102,7 @@ export class Renderer {
 
         const sx = (x - y) * (TILE_WIDTH / 2);
         const sy = (x + y) * (TILE_HEIGHT / 2);
-        const elevOffset = Math.floor(tile.elevation * 5) * ELEVATION_HEIGHT;
+        const elevOffset = tile.elevation * ELEVATION_HEIGHT;
 
         ctx.strokeStyle = hexToRgba(country.color, 0.4);
         ctx.lineWidth = 1;
@@ -792,7 +1118,10 @@ export class Renderer {
   }
 
   /** Render country names at their capital locations */
-  private renderCountryNames(ctx: CanvasRenderingContext2D, state: GameState): void {
+  private renderCountryNames(
+    ctx: CanvasRenderingContext2D,
+    state: GameState,
+  ): void {
     const { world } = state;
 
     for (const country of world.countries.values()) {
@@ -806,14 +1135,14 @@ export class Renderer {
       const { x, y } = capital.position;
       const sx = (x - y) * (TILE_WIDTH / 2);
       const sy = (x + y) * (TILE_HEIGHT / 2);
-      const elevOffset = Math.floor(tile.elevation * 5) * ELEVATION_HEIGHT;
+      const elevOffset = tile.elevation * ELEVATION_HEIGHT;
 
       // Draw country name with a subtle shadow
-      ctx.font = 'bold 10px monospace';
-      ctx.textAlign = 'center';
+      ctx.font = "bold 10px monospace";
+      ctx.textAlign = "center";
 
       // Shadow
-      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillStyle = "rgba(0,0,0,0.6)";
       ctx.fillText(country.name, sx + 1, sy - elevOffset - 55 + 1);
 
       // Text in country color
@@ -835,7 +1164,7 @@ export class Renderer {
     }
 
     // Background
-    ctx.fillStyle = 'rgba(10,10,20,0.8)';
+    ctx.fillStyle = "rgba(10,10,20,0.8)";
     ctx.fillRect(mmX - 2, mmY - 2, mmSize + 4, mmSize + 4);
     ctx.strokeStyle = PALETTE.uiBorder;
     ctx.lineWidth = 1;
@@ -846,7 +1175,10 @@ export class Renderer {
     // Camera viewport indicator
     const scaleX = mmSize / state.world.width;
     const scaleY = mmSize / state.world.height;
-    const range = this.camera.getVisibleRange(state.world.width, state.world.height);
+    const range = this.camera.getVisibleRange(
+      state.world.width,
+      state.world.height,
+    );
     ctx.strokeStyle = PALETTE.uiHighlight;
     ctx.lineWidth = 1;
     ctx.strokeRect(
@@ -873,10 +1205,16 @@ export class Renderer {
    * If screenX/screenY is inside the minimap, returns the tile coordinates.
    * Otherwise returns null.
    */
-  handleMinimapClick(screenX: number, screenY: number, worldWidth: number, worldHeight: number): { tx: number; ty: number } | null {
+  handleMinimapClick(
+    screenX: number,
+    screenY: number,
+    worldWidth: number,
+    worldHeight: number,
+  ): { tx: number; ty: number } | null {
     const { x, y, size } = this.minimapBounds;
     if (size === 0) return null;
-    if (screenX < x || screenX > x + size || screenY < y || screenY > y + size) return null;
+    if (screenX < x || screenX > x + size || screenY < y || screenY > y + size)
+      return null;
 
     const tx = Math.floor(((screenX - x) / size) * worldWidth);
     const ty = Math.floor(((screenY - y) / size) * worldHeight);
@@ -887,7 +1225,7 @@ export class Renderer {
   private generateMinimapImage(state: GameState): OffscreenCanvas {
     const { world } = state;
     const canvas = new OffscreenCanvas(world.width, world.height);
-    const ctx = canvas.getContext('2d')!;
+    const ctx = canvas.getContext("2d")!;
 
     for (let y = 0; y < world.height; y++) {
       for (let x = 0; x < world.width; x++) {
@@ -900,8 +1238,8 @@ export class Renderer {
     // Draw locations as bright dots
     for (const loc of world.locations.values()) {
       if (loc.isDestroyed) continue;
-      const country = world.countries.get(loc.countryId ?? '');
-      ctx.fillStyle = country?.color ?? '#ffffff';
+      const country = world.countries.get(loc.countryId ?? "");
+      ctx.fillStyle = country?.color ?? "#ffffff";
       ctx.fillRect(loc.position.x - 1, loc.position.y - 1, 3, 3);
     }
 
@@ -984,14 +1322,14 @@ export class Renderer {
 
         const sx = (tx - ty) * (TILE_WIDTH / 2);
         const sy = (tx + ty) * (TILE_HEIGHT / 2);
-        const elevOffset = Math.floor(world.tiles[ty][tx].elevation * 5) * ELEVATION_HEIGHT;
+        const elevOffset = world.tiles[ty][tx].elevation * ELEVATION_HEIGHT;
         const cy = sy - elevOffset;
 
         ctx.fillStyle = `rgba(10,10,18,${alpha.toFixed(3)})`;
         ctx.beginPath();
-        ctx.moveTo(sx,        cy - oh / 2);
+        ctx.moveTo(sx, cy - oh / 2);
         ctx.lineTo(sx + ow / 2, cy);
-        ctx.lineTo(sx,        cy + oh / 2);
+        ctx.lineTo(sx, cy + oh / 2);
         ctx.lineTo(sx - ow / 2, cy);
         ctx.closePath();
         ctx.fill();
@@ -1004,64 +1342,71 @@ export class Renderer {
     ctx: CanvasRenderingContext2D,
     world: World,
     currentTurn: number,
-    range: { minX: number; maxX: number; minY: number; maxY: number }
+    range: { minX: number; maxX: number; minY: number; maxY: number },
   ): void {
     const FADE_DURATION = 10; // turns before blood fully fades
-    
+
     for (const splash of world.bloodSplashes) {
       const { x, y, offsetX, offsetY, createdTurn } = splash;
-      
+
       // Skip if outside visible range
-      if (x < range.minX || x > range.maxX || y < range.minY || y > range.maxY) continue;
-      
+      if (x < range.minX || x > range.maxX || y < range.minY || y > range.maxY)
+        continue;
+
       const tile = world.tiles[y]?.[x];
       if (!tile || !tile.visible) continue;
-      
+
       const age = currentTurn - createdTurn;
       if (age >= FADE_DURATION) continue; // fully faded
-      
+
       let sx = (x - y) * (TILE_WIDTH / 2);
       let sy = (x + y) * (TILE_HEIGHT / 2);
-      const elevOffset = Math.floor(tile.elevation * 5) * ELEVATION_HEIGHT;
-      
+      const elevOffset = tile.elevation * ELEVATION_HEIGHT;
+
       // Apply stored offset (if creature was offset from party when killed)
       sx += offsetX;
       sy += offsetY;
-      
+
       // Fade out over time
-      const opacity = Math.max(0, 1 - (age / FADE_DURATION));
-      
+      const opacity = Math.max(0, 1 - age / FADE_DURATION);
+
       // Draw blood splash (dark red irregular shape)
       ctx.fillStyle = `rgba(100, 20, 20, ${opacity * 0.7})`;
-      
+
       // Draw several overlapping circles to create a splash effect
       const baseRadius = 4;
       ctx.globalAlpha = opacity * 0.7;
-      
+
       // Main splash
       ctx.beginPath();
       ctx.arc(sx, sy - elevOffset, baseRadius, 0, Math.PI * 2);
       ctx.fill();
-      
+
       // Splatter drops
       ctx.beginPath();
       ctx.arc(sx - 3, sy - elevOffset - 2, baseRadius * 0.6, 0, Math.PI * 2);
       ctx.fill();
-      
+
       ctx.beginPath();
       ctx.arc(sx + 2, sy - elevOffset + 2, baseRadius * 0.5, 0, Math.PI * 2);
       ctx.fill();
-      
+
       ctx.beginPath();
       ctx.arc(sx + 4, sy - elevOffset - 1, baseRadius * 0.4, 0, Math.PI * 2);
       ctx.fill();
-      
+
       ctx.globalAlpha = 1;
     }
   }
 
   /** Fill an isometric diamond shape */
-  private fillIsoDiamond(ctx: CanvasRenderingContext2D, cx: number, cy: number, w: number, h: number): void {
+  private fillIsoDiamond(
+    ctx: CanvasRenderingContext2D,
+    cx: number,
+    cy: number,
+    w: number,
+    h: number,
+  ): void {
     ctx.beginPath();
     ctx.moveTo(cx, cy - h / 2);
     ctx.lineTo(cx + w / 2, cy);
@@ -1070,27 +1415,109 @@ export class Renderer {
     ctx.closePath();
     ctx.fill();
   }
+
+  /** Get the base color of a tile based on its biome */
+  private getTileBaseColor(tile: Tile): { r: number; g: number; b: number } {
+    let hexColor: string;
+    
+    switch (tile.biome) {
+      case "ocean":
+        hexColor = PALETTE.water;
+        break;
+      case "beach":
+        hexColor = PALETTE.sand;
+        break;
+      case "desert":
+        hexColor = PALETTE.desert;
+        break;
+      case "grassland":
+        hexColor = PALETTE.grass;
+        break;
+      case "forest":
+      case "dense_forest":
+        hexColor = PALETTE.grassDark;
+        break;
+      case "jungle":
+        hexColor = PALETTE.jungleTree;
+        break;
+      case "hills":
+        hexColor = PALETTE.hillGrass;
+        break;
+      case "mountain":
+        hexColor = PALETTE.rock;
+        break;
+      case "snow_mountain":
+        hexColor = PALETTE.snow;
+        break;
+      case "tundra":
+        hexColor = PALETTE.tundra;
+        break;
+      case "swamp":
+        hexColor = PALETTE.swamp;
+        break;
+      case "savanna":
+        hexColor = PALETTE.savanna;
+        break;
+      default:
+        hexColor = PALETTE.grass;
+    }
+    
+    // Convert hex to RGB
+    const r = parseInt(hexColor.slice(1, 3), 16);
+    const g = parseInt(hexColor.slice(3, 5), 16);
+    const b = parseInt(hexColor.slice(5, 7), 16);
+    
+    return { r, g, b };
+  }
+
+  /** Blend two RGB colors together */
+  private blendColors(
+    color1: { r: number; g: number; b: number },
+    color2: { r: number; g: number; b: number },
+    factor: number,
+  ): { r: number; g: number; b: number } {
+    // factor determines how much of color1 to mix in (0 = all color2, 1 = all color1)
+    return {
+      r: Math.round(color2.r * (1 - factor) + color1.r * factor),
+      g: Math.round(color2.g * (1 - factor) + color1.g * factor),
+      b: Math.round(color2.b * (1 - factor) + color1.b * factor),
+    };
+  }
 }
 
 /** Get color for minimap pixel */
 function getMinimapColor(tile: Tile): string {
-  if (tile.locationId) return '#ffffff';
+  if (tile.locationId) return "#ffffff";
   if (tile.roadLevel > 0) return PALETTE.roadDirt;
 
   switch (tile.biome) {
-    case 'ocean': return PALETTE.deepWater;
-    case 'beach': return PALETTE.sand;
-    case 'desert': return PALETTE.desert;
-    case 'grassland': return PALETTE.grass;
-    case 'forest': return PALETTE.tree;
-    case 'dense_forest': return PALETTE.treeDark;
-    case 'jungle': return PALETTE.jungleTree;
-    case 'hills': return PALETTE.hillGrass;
-    case 'mountain': return PALETTE.rock;
-    case 'snow_mountain': return PALETTE.snow;
-    case 'tundra': return PALETTE.tundra;
-    case 'swamp': return PALETTE.swamp;
-    case 'savanna': return PALETTE.savanna;
-    default: return PALETTE.grass;
+    case "ocean":
+      return PALETTE.deepWater;
+    case "beach":
+      return PALETTE.sand;
+    case "desert":
+      return PALETTE.desert;
+    case "grassland":
+      return PALETTE.grass;
+    case "forest":
+      return PALETTE.tree;
+    case "dense_forest":
+      return PALETTE.treeDark;
+    case "jungle":
+      return PALETTE.jungleTree;
+    case "hills":
+      return PALETTE.hillGrass;
+    case "mountain":
+      return PALETTE.rock;
+    case "snow_mountain":
+      return PALETTE.snow;
+    case "tundra":
+      return PALETTE.tundra;
+    case "swamp":
+      return PALETTE.swamp;
+    case "savanna":
+      return PALETTE.savanna;
+    default:
+      return PALETTE.grass;
   }
 }

@@ -20,9 +20,10 @@ function scoreTileForSettlement(tile: Tile, tiles: Tile[][], width: number, heig
 
   let score = 0;
 
-  // Flat land is preferred
-  if (tile.elevation >= 0.33 && tile.elevation <= 0.55) score += 3;
-  else if (tile.elevation >= 0.55 && tile.elevation <= 0.65) score += 1;
+  // Flat land is preferred (elevation is 0-14)
+  // Lowland (4-7) is ideal, highland (8-9) is acceptable
+  if (tile.elevation >= 4 && tile.elevation <= 7) score += 3;
+  else if (tile.elevation >= 8 && tile.elevation <= 9) score += 1;
 
   // Near water is good
   let nearWater = false;
@@ -86,20 +87,20 @@ function determineLocationType(
     }
   }
 
-  if (isCoastal && rng.chance(0.5)) return 'fishing_village';
+  if (isCoastal && rng.chance(0.3)) return 'fishing_village';
 
   // Near mountains with ore → mine
   if (tile.resourceDeposit?.resourceId === 'iron_ore' ||
       tile.resourceDeposit?.resourceId === 'gold_ore' ||
       tile.resourceDeposit?.resourceId === 'coal') {
-    if (rng.chance(0.3)) return 'mine';
+    if (rng.chance(0.2)) return 'mine';
   }
 
   // Grassland → farm or hamlet
-  if (tile.biome === 'grassland' && rng.chance(0.3)) return 'farm';
+  if (tile.biome === 'grassland' && rng.chance(0.2)) return 'farm';
 
   // Forest → lumber camp
-  if ((tile.biome === 'forest' || tile.biome === 'dense_forest') && rng.chance(0.2)) {
+  if ((tile.biome === 'forest' || tile.biome === 'dense_forest') && rng.chance(0.15)) {
     return 'lumber_camp';
   }
 
@@ -123,16 +124,16 @@ function createInitialBuildings(type: LocationType, rng: SeededRandom): Building
 
   switch (type) {
     case 'homestead':
-      addBuilding('house');
+      for (let i = 0; i < rng.nextInt(1, 3); i++) addBuilding('house');
       addBuilding('farm_field');
       break;
     case 'hamlet':
-      for (let i = 0; i < rng.nextInt(3, 5); i++) addBuilding('house');
+      for (let i = 0; i < rng.nextInt(6, 10); i++) addBuilding('house');
       addBuilding('farm_field');
       if (rng.chance(0.5)) addBuilding('hunter_lodge');
       break;
     case 'village':
-      for (let i = 0; i < rng.nextInt(6, 10); i++) addBuilding('house');
+      for (let i = 0; i < rng.nextInt(15, 25); i++) addBuilding('house');
       for (let i = 0; i < 2; i++) addBuilding('farm_field');
       addBuilding('market');
       addBuilding('tavern');
@@ -140,7 +141,7 @@ function createInitialBuildings(type: LocationType, rng: SeededRandom): Building
       if (rng.chance(0.4)) addBuilding('church');
       break;
     case 'town':
-      for (let i = 0; i < rng.nextInt(12, 20); i++) addBuilding('house');
+      for (let i = 0; i < rng.nextInt(30, 50); i++) addBuilding('house');
       for (let i = 0; i < 3; i++) addBuilding('farm_field');
       addBuilding('market');
       addBuilding('tavern');
@@ -152,23 +153,64 @@ function createInitialBuildings(type: LocationType, rng: SeededRandom): Building
       if (rng.chance(0.5)) addBuilding('guild_hall');
       if (rng.chance(0.5)) addBuilding('bakery');
       break;
+    case 'city':
+      for (let i = 0; i < rng.nextInt(60, 100); i++) addBuilding('house');
+      for (let i = 0; i < 2; i++) addBuilding('market');
+      addBuilding('tavern');
+      addBuilding('blacksmith');
+      addBuilding('church');
+      addBuilding('barracks');
+      for (let i = 0; i < 2; i++) addBuilding('warehouse');
+      addBuilding('wall', 2);
+      addBuilding('guild_hall');
+      addBuilding('bakery');
+      if (rng.chance(0.6)) addBuilding('apothecary');
+      if (rng.chance(0.5)) addBuilding('weaponsmith');
+      if (rng.chance(0.5)) addBuilding('armorer');
+      break;
+    case 'castle':
+      // Fortified military settlement
+      addBuilding('castle_keep', 2);
+      addBuilding('wall', 3); // Strong walls
+      for (let i = 0; i < 2; i++) addBuilding('barracks', 2);
+      for (let i = 0; i < rng.nextInt(15, 30); i++) addBuilding('house');
+      addBuilding('warehouse');
+      addBuilding('blacksmith');
+      addBuilding('weaponsmith');
+      addBuilding('armorer');
+      addBuilding('stable');
+      if (rng.chance(0.6)) addBuilding('church');
+      if (rng.chance(0.4)) addBuilding('tavern');
+      break;
     case 'farm':
-      addBuilding('house');
+      for (let i = 0; i < rng.nextInt(2, 4); i++) addBuilding('house');
       for (let i = 0; i < rng.nextInt(2, 4); i++) addBuilding('farm_field');
       break;
     case 'mine':
-      addBuilding('house');
+      for (let i = 0; i < rng.nextInt(3, 6); i++) addBuilding('house');
       addBuilding('mine_shaft');
       if (rng.chance(0.4)) addBuilding('smelter');
       break;
     case 'lumber_camp':
-      addBuilding('house');
+      for (let i = 0; i < rng.nextInt(2, 5); i++) addBuilding('house');
       addBuilding('sawmill');
       break;
     case 'fishing_village':
-      for (let i = 0; i < rng.nextInt(3, 6); i++) addBuilding('house');
+      for (let i = 0; i < rng.nextInt(8, 15); i++) addBuilding('house');
       addBuilding('dock');
       if (rng.chance(0.4)) addBuilding('tavern');
+      break;
+    case 'port':
+      // Large coastal trading hub
+      for (let i = 0; i < rng.nextInt(25, 40); i++) addBuilding('house');
+      for (let i = 0; i < rng.nextInt(2, 4); i++) addBuilding('dock');
+      for (let i = 0; i < 2; i++) addBuilding('warehouse');
+      addBuilding('market');
+      addBuilding('tavern');
+      addBuilding('blacksmith');
+      if (rng.chance(0.6)) addBuilding('guild_hall');
+      if (rng.chance(0.5)) addBuilding('church');
+      if (rng.chance(0.4)) addBuilding('barracks');
       break;
     default:
       addBuilding('house');
@@ -217,10 +259,45 @@ export function placeSettlements(
 
     // Upgrade some to larger settlements
     let finalType = locType;
-    if (locations.size < 3 && (locType === 'hamlet' || locType === 'homestead')) {
-      finalType = 'town'; // first few settlements are larger
-    } else if (locations.size < 8 && locType === 'homestead' && rng.chance(0.3)) {
-      finalType = 'village';
+    
+    // Check if location is defensible (good for castles) - elevated or hilly terrain
+    const isDefensible = tile.elevation >= 6 || tile.biome === 'hills' || tile.biome === 'mountains';
+    
+    // Check if this is a basic settlement that can be upgraded
+    const canUpgrade = (locType === 'hamlet' || locType === 'homestead' || 
+                       locType === 'farm' || locType === 'mine' || locType === 'lumber_camp');
+    
+    // First settlements become major cities/towns/castles
+    if (locations.size < 2 && canUpgrade) {
+      // First 2 settlements: mix of castles and cities
+      if (isDefensible && rng.chance(0.5)) {
+        finalType = 'castle';
+      } else {
+        finalType = 'city';
+      }
+    } else if (locations.size < 12 && canUpgrade) {
+      // Next 10 settlements: mix of towns, cities, and castles
+      if (isDefensible && rng.chance(0.4)) {
+        finalType = 'castle';
+      } else if (rng.chance(0.25)) {
+        finalType = 'city';
+      } else {
+        finalType = 'town';
+      }
+    } else if (locations.size < 25 && canUpgrade) {
+      // Settlements 13-25: towns, villages, and castles
+      if (isDefensible && rng.chance(0.3)) {
+        finalType = 'castle';
+      } else if (rng.chance(0.35)) {
+        finalType = 'village';
+      } else if (rng.chance(0.5)) {
+        finalType = 'town';
+      }
+    } else if (locations.size < 40 && (locType === 'hamlet' || locType === 'homestead')) {
+      // Later settlements: occasional villages
+      if (rng.chance(0.4)) {
+        finalType = 'village';
+      }
     }
 
     const id = generateId('loc');
@@ -234,7 +311,7 @@ export function placeSettlements(
       type: finalType,
       position: { x: candidate.x, y: candidate.y },
       size: houseCount,
-      populationCapacity: houseCount * 4,
+      populationCapacity: houseCount * 6, // Increased from 4 to support larger populations
       residentIds: [],
       buildings,
       productionSites: [],
@@ -247,8 +324,8 @@ export function placeSettlements(
       },
       tradeRouteIds: [],
       marketPrices: {},
-      defenseLevel: finalType === 'town' ? 3 : finalType === 'village' ? 1 : 0,
-      wallLevel: finalType === 'town' ? 1 : 0,
+      defenseLevel: finalType === 'castle' ? 5 : finalType === 'city' ? 4 : finalType === 'town' ? 3 : finalType === 'port' ? 2 : finalType === 'village' ? 1 : 0,
+      wallLevel: finalType === 'castle' ? 3 : finalType === 'city' ? 2 : finalType === 'town' ? 1 : finalType === 'port' ? 1 : 0,
       garrisonIds: [],
       ownerId: null,
       countryId: null,
@@ -258,7 +335,7 @@ export function placeSettlements(
       foundedTurn: 0,
       isDestroyed: false,
       growthPoints: 0,
-      durability: finalType === 'town' ? 80 : finalType === 'village' ? 60 : finalType === 'city' ? 100 : 40,
+      durability: finalType === 'castle' ? 120 : finalType === 'city' ? 100 : finalType === 'town' ? 80 : finalType === 'port' ? 70 : finalType === 'village' ? 60 : 40,
       originalType: null,
       burningTurns: 0,
     };

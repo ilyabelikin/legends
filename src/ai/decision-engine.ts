@@ -1,10 +1,10 @@
-import type { Character, CharacterAction, JobType } from '../types/character';
-import type { Creature, CreatureBehavior } from '../types/creature';
-import type { World } from '../types/world';
-import type { Location } from '../types/location';
-import { SeededRandom } from '../utils/random';
-import { euclideanDist, manhattanDist } from '../utils/math';
-import { unloadTraderGoods, loadTraderGoods } from '../economy/trade-engine';
+import type { Character, CharacterAction, JobType } from "../types/character";
+import type { Creature, CreatureBehavior } from "../types/creature";
+import type { World } from "../types/world";
+import type { Location } from "../types/location";
+import { SeededRandom } from "../utils/random";
+import { euclideanDist, manhattanDist } from "../utils/math";
+import { unloadTraderGoods, loadTraderGoods } from "../economy/trade-engine";
 
 /**
  * AI decision weights — highly configurable.
@@ -64,67 +64,86 @@ export function decideCharacterAction(
   config: AIConfig,
   rng: SeededRandom,
 ): CharacterAction {
-  if (!character.isAlive) return { type: 'idle' };
-  if (character.age < 10) return { type: 'idle' }; // children don't act
-  if (character.currentAction?.type === 'traveling' && character.turnsUntilArrival > 0) {
+  if (!character.isAlive) return { type: "idle" };
+  if (character.age < 10) return { type: "idle" }; // children don't act
+  if (
+    character.currentAction?.type === "traveling" &&
+    character.turnsUntilArrival > 0
+  ) {
     return character.currentAction; // continue traveling
   }
 
   const options: ActionOption[] = [];
-  const home = character.homeLocationId ? world.locations.get(character.homeLocationId) : null;
+  const home = character.homeLocationId
+    ? world.locations.get(character.homeLocationId)
+    : null;
 
   // === SHEPHERDS: PROTECT FLOCK ===
-  if (character.jobType === 'shepherd') {
+  if (character.jobType === "shepherd") {
     // Initialize herdedCreatureIds if missing (for backward compatibility)
     if (!character.herdedCreatureIds) character.herdedCreatureIds = [];
-    
+
     if (character.herdedCreatureIds.length > 0) {
-    // Check if any threats are near the flock
-    let nearestThreat: { x: number; y: number } | null = null;
-    let minDist = Infinity;
+      // Check if any threats are near the flock
+      let nearestThreat: { x: number; y: number } | null = null;
+      let minDist = Infinity;
 
-    for (const creatureId of character.herdedCreatureIds) {
-      const sheep = world.creatures.get(creatureId);
-      if (!sheep || sheep.health <= 0) continue;
+      for (const creatureId of character.herdedCreatureIds) {
+        const sheep = world.creatures.get(creatureId);
+        if (!sheep || sheep.health <= 0) continue;
 
-      // Look for predators near this sheep
-      for (const predator of world.creatures.values()) {
-        if (predator.health <= 0) continue;
-        if (predator.type === 'wolf' || predator.type === 'bear' || predator.type === 'bandit') {
-          const dist = manhattanDist(sheep.position, predator.position);
-          if (dist < 8 && dist < minDist) {
-            minDist = dist;
-            nearestThreat = predator.position;
+        // Look for predators near this sheep
+        for (const predator of world.creatures.values()) {
+          if (predator.health <= 0) continue;
+          if (
+            predator.type === "wolf" ||
+            predator.type === "bear" ||
+            predator.type === "bandit"
+          ) {
+            const dist = manhattanDist(sheep.position, predator.position);
+            if (dist < 8 && dist < minDist) {
+              minDist = dist;
+              nearestThreat = predator.position;
+            }
           }
         }
       }
-    }
 
-    if (nearestThreat) {
-      // High priority: defend the flock!
-      options.push({
-        action: { type: 'herding' },
-        weight: 10.0, // very high priority
-        description: 'protect flock from predators',
-      });
-    } else {
-      // Normal herding work
-      options.push({
-        action: { type: 'herding' },
-        weight: config.workDrive * 0.8,
-        description: 'tend to flock',
-      });
-    }
+      if (nearestThreat) {
+        // High priority: defend the flock!
+        options.push({
+          action: { type: "herding" },
+          weight: 10.0, // very high priority
+          description: "protect flock from predators",
+        });
+      } else {
+        // Normal herding work
+        options.push({
+          action: { type: "herding" },
+          weight: config.workDrive * 0.8,
+          description: "tend to flock",
+        });
+      }
     }
   }
 
   // === WORK ===
-  if (home && character.jobType !== 'unemployed' && character.jobType !== 'child' && character.jobType !== 'elder' && character.jobType !== 'shepherd') {
-    const workWeight = config.workDrive * (1 - character.personality.curiosity * 0.3);
+  if (
+    home &&
+    character.jobType !== "unemployed" &&
+    character.jobType !== "child" &&
+    character.jobType !== "elder" &&
+    character.jobType !== "shepherd"
+  ) {
+    const workWeight =
+      config.workDrive * (1 - character.personality.curiosity * 0.3);
     options.push({
-      action: { type: 'working', buildingType: jobToBuilding(character.jobType) },
+      action: {
+        type: "working",
+        buildingType: jobToBuilding(character.jobType),
+      },
       weight: workWeight * (character.needs.purpose < 40 ? 1.5 : 1.0),
-      description: 'go to work',
+      description: "go to work",
     });
   }
 
@@ -133,21 +152,26 @@ export function decideCharacterAction(
     const hungerWeight = config.hungerDrive * (1 - character.needs.food / 100);
     if (home) {
       options.push({
-        action: { type: 'trading', locationId: home.id },
+        action: { type: "trading", locationId: home.id },
         weight: hungerWeight * 2,
-        description: 'get food',
+        description: "get food",
       });
     }
   }
 
   // === SOCIALIZE ===
   if (character.needs.social < 60 && character.relationships.length > 0) {
-    const friend = character.relationships.find(r => r.type === 'friend' || r.type === 'spouse');
+    const friend = character.relationships.find(
+      (r) => r.type === "friend" || r.type === "spouse",
+    );
     if (friend) {
       options.push({
-        action: { type: 'socializing', targetId: friend.targetId },
-        weight: config.socialDrive * (1 - character.needs.social / 100) * character.personality.kindness,
-        description: 'socialize',
+        action: { type: "socializing", targetId: friend.targetId },
+        weight:
+          config.socialDrive *
+          (1 - character.needs.social / 100) *
+          character.personality.kindness,
+        description: "socialize",
       });
     }
   }
@@ -155,17 +179,17 @@ export function decideCharacterAction(
   // === REST ===
   if (character.health < character.maxHealth * 0.7) {
     options.push({
-      action: { type: 'resting' },
+      action: { type: "resting" },
       weight: config.safetyDrive * (1 - character.health / character.maxHealth),
-      description: 'rest and recover',
+      description: "rest and recover",
     });
   }
 
   // === IDLE ===
   options.push({
-    action: { type: 'idle' },
+    action: { type: "idle" },
     weight: 0.3,
-    description: 'do nothing',
+    description: "do nothing",
   });
 
   // === EXPLORE (rare) ===
@@ -173,9 +197,9 @@ export function decideCharacterAction(
     const nearbyUnexplored = findNearbyUnexplored(character, world);
     if (nearbyUnexplored) {
       options.push({
-        action: { type: 'exploring' },
+        action: { type: "exploring" },
         weight: config.ambitionDrive * character.personality.curiosity,
-        description: 'explore nearby areas',
+        description: "explore nearby areas",
       });
     }
   }
@@ -186,43 +210,52 @@ export function decideCharacterAction(
       // Consider becoming a different job
       if (character.personality.courage > 0.7 && character.stats.strength > 6) {
         options.push({
-          action: { type: 'idle' }, // will be handled as career change
+          action: { type: "idle" }, // will be handled as career change
           weight: config.ambitionDrive * character.personality.ambition * 0.5,
-          description: 'change career',
+          description: "change career",
         });
       }
     }
   }
 
   // === BECOME ADVENTURER (very rare) ===
-  if (character.personality.curiosity > 0.8 &&
-      character.personality.courage > 0.8 &&
-      character.personality.ambition > 0.7 &&
-      character.age >= 16 && character.age <= 35 &&
-      rng.chance(config.adventurerChance)) {
+  if (
+    character.personality.curiosity > 0.8 &&
+    character.personality.courage > 0.8 &&
+    character.personality.ambition > 0.7 &&
+    character.age >= 16 &&
+    character.age <= 35 &&
+    rng.chance(config.adventurerChance)
+  ) {
     options.push({
-      action: { type: 'exploring' },
+      action: { type: "exploring" },
       weight: config.ambitionDrive * 2,
-      description: 'become an adventurer',
+      description: "become an adventurer",
     });
   }
 
   // === MARRIAGE ===
-  if (!character.relationships.some(r => r.type === 'spouse') &&
-      character.age >= 16 && character.age <= 50 &&
-      rng.chance(config.marriageChance)) {
+  if (
+    !character.relationships.some((r) => r.type === "spouse") &&
+    character.age >= 16 &&
+    character.age <= 50 &&
+    rng.chance(config.marriageChance)
+  ) {
     options.push({
-      action: { type: 'socializing', targetId: '' }, // target will be found
+      action: { type: "socializing", targetId: "" }, // target will be found
       weight: config.socialDrive * 0.5,
-      description: 'look for partner',
+      description: "look for partner",
     });
   }
 
   // Select action using weighted random
-  if (options.length === 0) return { type: 'idle' };
+  if (options.length === 0) return { type: "idle" };
 
-  const totalWeight = options.reduce((sum, o) => sum + Math.max(0, o.weight), 0);
-  if (totalWeight <= 0) return { type: 'idle' };
+  const totalWeight = options.reduce(
+    (sum, o) => sum + Math.max(0, o.weight),
+    0,
+  );
+  if (totalWeight <= 0) return { type: "idle" };
 
   let roll = rng.next() * totalWeight;
   for (const option of options) {
@@ -248,33 +281,38 @@ export function decideCreatureAction(
     : 0;
 
   // Dragon: special behavior
-  if (creature.type === 'dragon') {
+  if (creature.type === "dragon") {
     return decideDragonAction(creature, world, partyPos, distToParty, rng);
   }
 
   // Bandit: raid nearby settlements or attack party
-  if (creature.type === 'bandit') {
+  if (creature.type === "bandit") {
     return decideBanditAction(creature, world, partyPos, distToParty, rng);
   }
 
   // Guard: patrol near home settlement, hunt bandits
-  if (creature.type === 'guard') {
+  if (creature.type === "guard") {
     return decideGuardAction(creature, world, rng);
   }
 
   // Army: march toward target settlement
-  if (creature.type === 'army') {
+  if (creature.type === "army") {
     return decideArmyAction(creature, world, rng);
   }
 
   // Trader: walk along trade route between settlements
-  if (creature.type === 'trader') {
+  if (creature.type === "trader") {
     return decideTraderAction(creature, world, rng);
   }
 
   // Hunter: track and hunt wild game (deer, sheep, boar)
-  if (creature.type === 'hunter') {
+  if (creature.type === "hunter") {
     return decideHunterAction(creature, world, rng);
+  }
+
+  // Builder: travel to ruins and rebuild them
+  if (creature.type === "builder") {
+    return decideBuilderAction(creature, world, rng);
   }
 
   // Hostile creatures: attack if close, hunt otherwise
@@ -283,7 +321,7 @@ export function decideCreatureAction(
     return {
       dx: Math.sign(partyPos.x - creature.position.x),
       dy: Math.sign(partyPos.y - creature.position.y),
-      behavior: 'aggressive',
+      behavior: "aggressive",
     };
   }
 
@@ -292,16 +330,19 @@ export function decideCreatureAction(
     return {
       dx: -Math.sign(partyPos.x - creature.position.x),
       dy: -Math.sign(partyPos.y - creature.position.y),
-      behavior: 'fleeing',
+      behavior: "fleeing",
     };
   }
 
   // Territorial: return to home if too far
-  if (creature.behavior === 'territorial' && distToHome > creature.wanderRadius) {
+  if (
+    creature.behavior === "territorial" &&
+    distToHome > creature.wanderRadius
+  ) {
     return {
       dx: Math.sign((creature.homePosition?.x ?? 0) - creature.position.x),
       dy: Math.sign((creature.homePosition?.y ?? 0) - creature.position.y),
-      behavior: 'territorial',
+      behavior: "territorial",
     };
   }
 
@@ -330,18 +371,34 @@ function decideDragonAction(
     : 0;
   const healthPct = creature.health / creature.maxHealth;
 
+  // === ATTACK COOLDOWN: return to lair and rest ===
+  if (creature.attackCooldown && creature.attackCooldown > 0) {
+    creature.attackCooldown--;
+    if (creature.homePosition && distToHome > 2) {
+      // Fly back to lair
+      return {
+        dx: Math.sign(creature.homePosition.x - creature.position.x) * 2,
+        dy: Math.sign(creature.homePosition.y - creature.position.y) * 2,
+        behavior: "territorial",
+      };
+    }
+    // At lair — rest
+    creature.health = Math.min(creature.maxHealth, creature.health + 2);
+    return { dx: 0, dy: 0, behavior: "territorial" };
+  }
+
   // === WOUNDED: retreat to lair and heal ===
   if (healthPct < 0.4 && creature.homePosition) {
     // At lair — rest and heal
     if (distToHome <= 2) {
       creature.health = Math.min(creature.maxHealth, creature.health + 5);
-      return { dx: 0, dy: 0, behavior: 'territorial' };
+      return { dx: 0, dy: 0, behavior: "territorial" };
     }
     // Fly home fast
     return {
       dx: Math.sign(creature.homePosition.x - creature.position.x) * 3,
       dy: Math.sign(creature.homePosition.y - creature.position.y) * 3,
-      behavior: 'fleeing',
+      behavior: "fleeing",
     };
   }
 
@@ -357,12 +414,12 @@ function decideDragonAction(
     return {
       dx: Math.sign(partyPos.x - creature.position.x) * 2,
       dy: Math.sign(partyPos.y - creature.position.y) * 2,
-      behavior: 'hunting',
+      behavior: "hunting",
     };
   }
 
   // === Fly toward a settlement to menace it (10% chance) ===
-  if (rng.chance(0.10) && healthPct > 0.6) {
+  if (rng.chance(0.1) && healthPct > 0.6) {
     let targetLoc: Location | null = null;
     let targetDist = Infinity;
     for (const loc of world.locations.values()) {
@@ -374,9 +431,13 @@ function decideDragonAction(
       }
     }
     if (targetLoc) {
-      const dx = Math.sign(targetLoc.position.x - creature.position.x) * rng.nextInt(1, 3);
-      const dy = Math.sign(targetLoc.position.y - creature.position.y) * rng.nextInt(1, 3);
-      return { dx, dy, behavior: 'aggressive' };
+      const dx =
+        Math.sign(targetLoc.position.x - creature.position.x) *
+        rng.nextInt(1, 3);
+      const dy =
+        Math.sign(targetLoc.position.y - creature.position.y) *
+        rng.nextInt(1, 3);
+      return { dx, dy, behavior: "aggressive" };
     }
   }
 
@@ -385,7 +446,7 @@ function decideDragonAction(
     return {
       dx: rng.nextInt(-3, 3),
       dy: rng.nextInt(-3, 3),
-      behavior: 'migrating',
+      behavior: "migrating",
     };
   }
 
@@ -394,7 +455,7 @@ function decideDragonAction(
     return {
       dx: Math.sign(creature.homePosition.x - creature.position.x) * 2,
       dy: Math.sign(creature.homePosition.y - creature.position.y) * 2,
-      behavior: 'territorial',
+      behavior: "territorial",
     };
   }
 
@@ -403,11 +464,11 @@ function decideDragonAction(
     return {
       dx: rng.nextInt(-2, 2),
       dy: rng.nextInt(-2, 2),
-      behavior: 'territorial',
+      behavior: "territorial",
     };
   }
 
-  return { dx: 0, dy: 0, behavior: 'territorial' };
+  return { dx: 0, dy: 0, behavior: "territorial" };
 }
 
 /** Bandit-specific AI */
@@ -423,7 +484,7 @@ function decideBanditAction(
     return {
       dx: Math.sign(partyPos.x - creature.position.x),
       dy: Math.sign(partyPos.y - creature.position.y),
-      behavior: 'raiding',
+      behavior: "raiding",
     };
   }
 
@@ -440,7 +501,7 @@ function decideBanditAction(
             return {
               dx: Math.sign(dx),
               dy: Math.sign(dy),
-              behavior: 'raiding',
+              behavior: "raiding",
             };
           }
         }
@@ -461,7 +522,10 @@ function decideBanditAction(
 }
 
 /** Find nearby unexplored tile for a character */
-function findNearbyUnexplored(character: Character, world: World): { x: number; y: number } | null {
+function findNearbyUnexplored(
+  character: Character,
+  world: World,
+): { x: number; y: number } | null {
   const radius = 5;
   for (let dy = -radius; dy <= radius; dy++) {
     for (let dx = -radius; dx <= radius; dx++) {
@@ -480,24 +544,24 @@ function findNearbyUnexplored(character: Character, world: World): { x: number; 
 /** Map job type to building type for work action */
 function jobToBuilding(job: JobType): string {
   const map: Partial<Record<JobType, string>> = {
-    farmer: 'farm_field',
-    miner: 'mine_shaft',
-    lumberjack: 'sawmill',
-    fisher: 'dock',
-    shepherd: 'farm_field',
-    blacksmith: 'blacksmith',
-    weaver: 'weaver',
-    baker: 'bakery',
-    brewer: 'brewery',
-    tanner: 'tanner',
-    hunter: 'hunter_lodge',
-    herbalist: 'apothecary',
-    soldier: 'barracks',
-    guard: 'wall',
-    priest: 'church',
-    merchant: 'market',
+    farmer: "farm_field",
+    miner: "mine_shaft",
+    lumberjack: "sawmill",
+    fisher: "dock",
+    shepherd: "farm_field",
+    blacksmith: "blacksmith",
+    weaver: "weaver",
+    baker: "bakery",
+    brewer: "brewery",
+    tanner: "tanner",
+    hunter: "hunter_lodge",
+    herbalist: "apothecary",
+    soldier: "barracks",
+    guard: "wall",
+    priest: "church",
+    merchant: "market",
   };
-  return map[job] ?? 'house';
+  return map[job] ?? "house";
 }
 
 /** Guard AI — patrol near home, hunt bandits/dragons/enemy armies */
@@ -512,14 +576,14 @@ function decideGuardAction(
   for (const c of world.creatures.values()) {
     if (c.health <= 0) continue;
     // Target bandits and dragons
-    const isThreat = c.type === 'bandit' || c.type === 'dragon';
+    const isThreat = c.type === "bandit" || c.type === "dragon";
     // Target enemy armies (different country)
-    const isEnemyArmy = c.type === 'army' && c.countryId !== creature.countryId;
+    const isEnemyArmy = c.type === "army" && c.countryId !== creature.countryId;
     if (!isThreat && !isEnemyArmy) continue;
 
     const dist = manhattanDist(creature.position, c.position);
     // Pursue dragons from further away (they're a bigger threat)
-    const detectRange = c.type === 'dragon' ? 12 : 8;
+    const detectRange = c.type === "dragon" ? 12 : 8;
     if (dist < nearestDist && dist < detectRange) {
       nearestDist = dist;
       nearestThreat = c;
@@ -530,7 +594,7 @@ function decideGuardAction(
     return {
       dx: Math.sign(nearestThreat.position.x - creature.position.x),
       dy: Math.sign(nearestThreat.position.y - creature.position.y),
-      behavior: 'hunting',
+      behavior: "hunting",
     };
   }
 
@@ -542,7 +606,7 @@ function decideGuardAction(
     return {
       dx: Math.sign(creature.homePosition.x - creature.position.x),
       dy: Math.sign(creature.homePosition.y - creature.position.y),
-      behavior: 'patrolling',
+      behavior: "patrolling",
     };
   }
 
@@ -551,11 +615,11 @@ function decideGuardAction(
     return {
       dx: rng.nextInt(-1, 1),
       dy: rng.nextInt(-1, 1),
-      behavior: 'patrolling',
+      behavior: "patrolling",
     };
   }
 
-  return { dx: 0, dy: 0, behavior: 'patrolling' };
+  return { dx: 0, dy: 0, behavior: "patrolling" };
 }
 
 /** Army AI — march toward target settlement, attack on arrival */
@@ -576,14 +640,16 @@ function decideArmyAction(
         return {
           dx: Math.sign(target.position.x - creature.position.x),
           dy: Math.sign(target.position.y - creature.position.y),
-          behavior: 'aggressive',
+          behavior: "aggressive",
         };
       }
 
       // March toward target (2 tiles per turn, prefer roads)
-      const dx = Math.sign(target.position.x - creature.position.x) * Math.min(2, dist);
-      const dy = Math.sign(target.position.y - creature.position.y) * Math.min(2, dist);
-      return { dx, dy, behavior: 'marching' };
+      const dx =
+        Math.sign(target.position.x - creature.position.x) * Math.min(2, dist);
+      const dy =
+        Math.sign(target.position.y - creature.position.y) * Math.min(2, dist);
+      return { dx, dy, behavior: "marching" };
     } else {
       // Target destroyed — look for a new one
       creature.targetLocationId = null;
@@ -612,7 +678,7 @@ function decideArmyAction(
         return {
           dx: Math.sign(nearest.position.x - creature.position.x),
           dy: Math.sign(nearest.position.y - creature.position.y),
-          behavior: 'marching',
+          behavior: "marching",
         };
       }
     }
@@ -625,12 +691,12 @@ function decideArmyAction(
       return {
         dx: Math.sign(creature.homePosition.x - creature.position.x),
         dy: Math.sign(creature.homePosition.y - creature.position.y),
-        behavior: 'marching',
+        behavior: "marching",
       };
     }
   }
 
-  return { dx: 0, dy: 0, behavior: 'patrolling' };
+  return { dx: 0, dy: 0, behavior: "patrolling" };
 }
 
 /** Hunter AI — patrol near home, hunt wild game (deer, sheep, boar) */
@@ -639,13 +705,20 @@ function decideHunterAction(
   world: World,
   rng: SeededRandom,
 ): { dx: number; dy: number; behavior: CreatureBehavior } {
+  // Initialize turnsWithoutPrey if missing
+  if (creature.turnsWithoutPrey === undefined) {
+    creature.turnsWithoutPrey = 0;
+  }
+
   // Hunt nearby game — deer, sheep, boar within detection range
   let nearestPrey: Creature | null = null;
   let nearestDist = Infinity;
   for (const c of world.creatures.values()) {
     if (c.health <= 0) continue;
-    // Target passive game animals
-    const isPrey = c.type === 'deer' || c.type === 'sheep' || c.type === 'boar';
+    // Target passive game animals (but not herded sheep)
+    const isPrey =
+      (c.type === "deer" || c.type === "sheep" || c.type === "boar") &&
+      !c.ownerId;
     if (!isPrey) continue;
 
     const dist = manhattanDist(creature.position, c.position);
@@ -656,12 +729,17 @@ function decideHunterAction(
   }
 
   if (nearestPrey) {
+    // Found prey! Reset idle counter
+    creature.turnsWithoutPrey = 0;
     return {
       dx: Math.sign(nearestPrey.position.x - creature.position.x),
       dy: Math.sign(nearestPrey.position.y - creature.position.y),
-      behavior: 'hunting',
+      behavior: "hunting",
     };
   }
+
+  // No prey found — increment idle counter
+  creature.turnsWithoutPrey++;
 
   // Return home if too far
   const distToHome = creature.homePosition
@@ -671,7 +749,7 @@ function decideHunterAction(
     return {
       dx: Math.sign(creature.homePosition.x - creature.position.x),
       dy: Math.sign(creature.homePosition.y - creature.position.y),
-      behavior: 'hunting',
+      behavior: "hunting",
     };
   }
 
@@ -680,11 +758,71 @@ function decideHunterAction(
     return {
       dx: rng.nextInt(-1, 1),
       dy: rng.nextInt(-1, 1),
-      behavior: 'hunting',
+      behavior: "hunting",
     };
   }
 
-  return { dx: 0, dy: 0, behavior: 'hunting' };
+  return { dx: 0, dy: 0, behavior: "hunting" };
+}
+
+/** Builder-specific AI — travel to target ruins and rebuild them */
+function decideBuilderAction(
+  creature: Creature,
+  world: World,
+  rng: SeededRandom,
+): { dx: number; dy: number; behavior: CreatureBehavior } {
+  // Find target ruin
+  const target = creature.targetLocationId
+    ? world.locations.get(creature.targetLocationId)
+    : null;
+
+  if (target && target.isDestroyed && target.type === "ruins") {
+    const dist = manhattanDist(creature.position, target.position);
+
+    // Arrived at ruins — rebuild
+    if (dist <= 1) {
+      // Rebuild slowly over multiple turns
+      target.durability = Math.min(100, target.durability + 5);
+
+      // Fully restored
+      if (target.durability >= 80 && target.originalType) {
+        target.isDestroyed = false;
+        target.type = target.originalType;
+        target.originalType = null;
+        target.happiness = 30;
+        target.prosperity = 20;
+        target.safety = 40;
+
+        // Builder's job is done — despawn
+        creature.health = 0;
+      }
+
+      return { dx: 0, dy: 0, behavior: "patrolling" };
+    }
+
+    // Travel toward ruins
+    return {
+      dx: Math.sign(target.position.x - creature.position.x),
+      dy: Math.sign(target.position.y - creature.position.y),
+      behavior: "patrolling",
+    };
+  }
+
+  // No target or target gone — return home
+  if (creature.homePosition) {
+    const distHome = manhattanDist(creature.position, creature.homePosition);
+    if (distHome > 1) {
+      return {
+        dx: Math.sign(creature.homePosition.x - creature.position.x),
+        dy: Math.sign(creature.homePosition.y - creature.position.y),
+        behavior: "patrolling",
+      };
+    }
+  }
+
+  // Arrived home — despawn
+  creature.health = 0;
+  return { dx: 0, dy: 0, behavior: "patrolling" };
 }
 
 /** Trader AI — walk between home and target settlement following trade route path */
@@ -706,22 +844,22 @@ function decideTraderAction(
       // Reached destination - unload and reload goods
       const currentLoc = world.locations.get(creature.homeLocationId!);
       const nextLoc = world.locations.get(creature.targetLocationId!);
-      
+
       if (currentLoc && nextLoc) {
         // Unload goods at current location
         unloadTraderGoods(creature, currentLoc);
-        
+
         // Load new goods for return journey
         loadTraderGoods(creature, currentLoc, nextLoc, world);
       }
-      
+
       // Reverse direction
       creature.pathDirection = (direction * -1) as 1 | -1;
       // Swap home and target
       const oldTarget = creature.targetLocationId;
       creature.targetLocationId = creature.homeLocationId;
       creature.homeLocationId = oldTarget;
-      return { dx: 0, dy: 0, behavior: 'trading' };
+      return { dx: 0, dy: 0, behavior: "trading" };
     }
 
     const nextPos = creature.path[nextIndex];
@@ -731,7 +869,7 @@ function decideTraderAction(
     // Update progress
     creature.pathProgress = nextIndex;
 
-    return { dx, dy, behavior: 'trading' };
+    return { dx, dy, behavior: "trading" };
   }
 
   // Fallback to simple movement if no path (shouldn't happen for traders)
@@ -744,22 +882,22 @@ function decideTraderAction(
         // Arrived — unload and reload goods, then swap target and home
         const currentLoc = world.locations.get(creature.homeLocationId!);
         const nextLoc = world.locations.get(creature.targetLocationId!);
-        
+
         if (currentLoc && nextLoc) {
           unloadTraderGoods(creature, currentLoc);
           loadTraderGoods(creature, currentLoc, nextLoc, world);
         }
-        
+
         const oldTarget = creature.targetLocationId;
         creature.targetLocationId = creature.homeLocationId;
         creature.homeLocationId = oldTarget;
-        return { dx: 0, dy: 0, behavior: 'trading' };
+        return { dx: 0, dy: 0, behavior: "trading" };
       }
 
       return {
         dx: Math.sign(target.position.x - creature.position.x),
         dy: Math.sign(target.position.y - creature.position.y),
-        behavior: 'trading',
+        behavior: "trading",
       };
     }
   }
@@ -770,10 +908,10 @@ function decideTraderAction(
       return {
         dx: Math.sign(creature.homePosition.x - creature.position.x),
         dy: Math.sign(creature.homePosition.y - creature.position.y),
-        behavior: 'trading',
+        behavior: "trading",
       };
     }
   }
 
-  return { dx: 0, dy: 0, behavior: 'trading' };
+  return { dx: 0, dy: 0, behavior: "trading" };
 }

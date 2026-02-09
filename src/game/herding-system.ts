@@ -1,11 +1,11 @@
-import type { World } from '../types/world';
-import type { Character } from '../types/character';
-import type { Creature } from '../types/creature';
-import type { GameEvent } from '../types/event';
-import { manhattanDist } from '../utils/math';
-import { SeededRandom, generateId } from '../utils/random';
-import { CREATURE_DEFINITIONS } from '../data/creature-data';
-import { addToStorage } from '../economy/economy-engine';
+import type { World } from "../types/world";
+import type { Character } from "../types/character";
+import type { Creature } from "../types/creature";
+import type { GameEvent } from "../types/event";
+import { manhattanDist } from "../utils/math";
+import { SeededRandom, generateId } from "../utils/random";
+import { CREATURE_DEFINITIONS } from "../data/creature-data";
+import { addToStorage } from "../economy/economy-engine";
 
 /**
  * Herding system for shepherds who gather, protect, and raise sheep.
@@ -24,18 +24,21 @@ const BREEDING_COOLDOWN = 15;
  * Shepherds gather nearby wild sheep into their herd.
  * Wild sheep within 8 tiles can be claimed if shepherd has capacity.
  */
-export function tickShepherdGathering(world: World, rng: SeededRandom): GameEvent[] {
+export function tickShepherdGathering(
+  world: World,
+  rng: SeededRandom,
+): GameEvent[] {
   const events: GameEvent[] = [];
-  
+
   for (const char of world.characters.values()) {
-    if (!char.isAlive || char.jobType !== 'shepherd') continue;
+    if (!char.isAlive || char.jobType !== "shepherd") continue;
     // Initialize herdedCreatureIds if missing (for backward compatibility)
     if (!char.herdedCreatureIds) char.herdedCreatureIds = [];
     if (char.herdedCreatureIds.length >= MAX_HERD_SIZE) continue;
 
     // Find nearby wild sheep
     for (const creature of world.creatures.values()) {
-      if (creature.type !== 'sheep') continue;
+      if (creature.type !== "sheep") continue;
       if (creature.ownerId) continue; // already herded
       if (creature.health <= 0) continue;
 
@@ -49,15 +52,15 @@ export function tickShepherdGathering(world: World, rng: SeededRandom): GameEven
       // Initialize herding data
       creature.lastWoolProduction = 0;
       creature.breedingCooldown = rng.nextInt(0, BREEDING_COOLDOWN);
-      creature.behavior = 'passive';
+      creature.behavior = "passive";
       creature.homePosition = { ...char.position };
 
       if (char.homeLocationId) {
         const loc = world.locations.get(char.homeLocationId);
         if (loc && !loc.isDestroyed) {
           events.push({
-            id: generateId('evt'),
-            type: 'trade',
+            id: generateId("evt"),
+            type: "trade",
             turn: 0,
             title: `${char.name} gathered sheep at ${loc.name}`,
             description: `Shepherd ${char.name} added a sheep to their flock.`,
@@ -65,7 +68,7 @@ export function tickShepherdGathering(world: World, rng: SeededRandom): GameEven
             characterIds: [char.id],
             isResolved: false,
             effects: [],
-            severity: 'minor',
+            severity: "minor",
           });
         }
       }
@@ -82,7 +85,7 @@ export function tickShepherdGathering(world: World, rng: SeededRandom): GameEven
  */
 export function tickHerdMovement(world: World): void {
   for (const char of world.characters.values()) {
-    if (!char.isAlive || char.jobType !== 'shepherd') continue;
+    if (!char.isAlive || char.jobType !== "shepherd") continue;
     // Initialize herdedCreatureIds if missing (for backward compatibility)
     if (!char.herdedCreatureIds) char.herdedCreatureIds = [];
     if (char.herdedCreatureIds.length === 0) continue;
@@ -92,7 +95,7 @@ export function tickHerdMovement(world: World): void {
       if (!sheep || sheep.health <= 0) continue;
 
       const dist = manhattanDist(sheep.position, char.position);
-      
+
       // Sheep try to stay within 3 tiles of their shepherd
       if (dist > 3) {
         const dx = Math.sign(char.position.x - sheep.position.x);
@@ -118,9 +121,9 @@ export function tickHerdMovement(world: World): void {
  */
 export function tickWoolProduction(world: World, turn: number): GameEvent[] {
   const events: GameEvent[] = [];
-  
+
   for (const char of world.characters.values()) {
-    if (!char.isAlive || char.jobType !== 'shepherd') continue;
+    if (!char.isAlive || char.jobType !== "shepherd") continue;
     if (!char.homeLocationId) continue;
     // Initialize herdedCreatureIds if missing (for backward compatibility)
     if (!char.herdedCreatureIds) char.herdedCreatureIds = [];
@@ -139,7 +142,7 @@ export function tickWoolProduction(world: World, turn: number): GameEvent[] {
       if (turn - lastProduction >= WOOL_PRODUCTION_INTERVAL) {
         // Produce wool
         const woolAmount = 1 + Math.random() * 0.5;
-        addToStorage(loc, 'wool', woolAmount, 0.7);
+        addToStorage(loc, "wool", woolAmount, 0.7);
         sheep.lastWoolProduction = turn;
         woolProduced += woolAmount;
       }
@@ -147,8 +150,8 @@ export function tickWoolProduction(world: World, turn: number): GameEvent[] {
 
     if (woolProduced > 0) {
       events.push({
-        id: generateId('evt'),
-        type: 'trade',
+        id: generateId("evt"),
+        type: "trade",
         turn,
         title: `Wool produced at ${loc.name}`,
         description: `${char.name}'s flock produced ${woolProduced.toFixed(1)} wool.`,
@@ -156,7 +159,7 @@ export function tickWoolProduction(world: World, turn: number): GameEvent[] {
         characterIds: [char.id],
         isResolved: false,
         effects: [],
-        severity: 'minor',
+        severity: "minor",
       });
     }
   }
@@ -168,11 +171,15 @@ export function tickWoolProduction(world: World, turn: number): GameEvent[] {
  * Herded sheep breed and multiply over time.
  * Requires at least 2 sheep, and sheep must be off breeding cooldown.
  */
-export function tickSheepBreeding(world: World, turn: number, rng: SeededRandom): GameEvent[] {
+export function tickSheepBreeding(
+  world: World,
+  turn: number,
+  rng: SeededRandom,
+): GameEvent[] {
   const events: GameEvent[] = [];
-  
+
   for (const char of world.characters.values()) {
-    if (!char.isAlive || char.jobType !== 'shepherd') continue;
+    if (!char.isAlive || char.jobType !== "shepherd") continue;
     // Initialize herdedCreatureIds if missing (for backward compatibility)
     if (!char.herdedCreatureIds) char.herdedCreatureIds = [];
     if (char.herdedCreatureIds.length < 2) continue;
@@ -183,7 +190,7 @@ export function tickSheepBreeding(world: World, turn: number, rng: SeededRandom)
     for (const creatureId of char.herdedCreatureIds) {
       const sheep = world.creatures.get(creatureId);
       if (!sheep || sheep.health <= 0) continue;
-      
+
       const cooldown = sheep.breedingCooldown ?? 0;
       if (cooldown <= 0) {
         breedableSheep.push(sheep);
@@ -195,12 +202,12 @@ export function tickSheepBreeding(world: World, turn: number, rng: SeededRandom)
       // Breeding chance 20% per turn when conditions are met
       if (rng.chance(0.2)) {
         // Create a new lamb
-        const def = CREATURE_DEFINITIONS['sheep'];
-        const lambId = generateId('creature');
-        
+        const def = CREATURE_DEFINITIONS["sheep"];
+        const lambId = generateId("creature");
+
         const lamb: Creature = {
           id: lambId,
-          type: 'sheep',
+          type: "sheep",
           name: null,
           position: { ...char.position },
           health: def.baseHealth * 0.5, // lambs start smaller
@@ -208,13 +215,13 @@ export function tickSheepBreeding(world: World, turn: number, rng: SeededRandom)
           attack: def.baseAttack,
           defense: def.baseDefense,
           speed: def.baseSpeed,
-          behavior: 'passive',
+          behavior: "passive",
           homePosition: { ...char.position },
           wanderRadius: 3,
           isHostile: false,
           loot: [
-            { resourceId: 'wool', quantity: 0.5, quality: 0.5, age: 0 },
-            { resourceId: 'meat', quantity: 0.5, quality: 0.5, age: 0 },
+            { resourceId: "wool", quantity: 0.5, quality: 0.5, age: 0 },
+            { resourceId: "meat", quantity: 0.5, quality: 0.5, age: 0 },
           ],
           age: 0,
           lastActionTurn: turn,
@@ -237,8 +244,8 @@ export function tickSheepBreeding(world: World, turn: number, rng: SeededRandom)
           const loc = world.locations.get(char.homeLocationId);
           if (loc && !loc.isDestroyed) {
             events.push({
-              id: generateId('evt'),
-              type: 'trade',
+              id: generateId("evt"),
+              type: "trade",
               turn,
               title: `Lamb born at ${loc.name}`,
               description: `${char.name}'s flock grew by one!`,
@@ -246,7 +253,7 @@ export function tickSheepBreeding(world: World, turn: number, rng: SeededRandom)
               characterIds: [char.id],
               isResolved: false,
               effects: [],
-              severity: 'minor',
+              severity: "minor",
             });
           }
         }
@@ -256,7 +263,11 @@ export function tickSheepBreeding(world: World, turn: number, rng: SeededRandom)
     // Decrement breeding cooldowns
     for (const creatureId of char.herdedCreatureIds) {
       const sheep = world.creatures.get(creatureId);
-      if (sheep && sheep.breedingCooldown !== undefined && sheep.breedingCooldown > 0) {
+      if (
+        sheep &&
+        sheep.breedingCooldown !== undefined &&
+        sheep.breedingCooldown > 0
+      ) {
         sheep.breedingCooldown--;
       }
     }
@@ -275,7 +286,7 @@ export function tickHerdCleanup(world: World): void {
     if (char.herdedCreatureIds.length === 0) continue;
 
     // Remove dead sheep from herd
-    char.herdedCreatureIds = char.herdedCreatureIds.filter(id => {
+    char.herdedCreatureIds = char.herdedCreatureIds.filter((id) => {
       const sheep = world.creatures.get(id);
       return sheep && sheep.health > 0;
     });
@@ -287,7 +298,7 @@ export function tickHerdCleanup(world: World): void {
       const owner = world.characters.get(creature.ownerId);
       if (!owner || !owner.isAlive) {
         creature.ownerId = null;
-        creature.behavior = 'passive';
+        creature.behavior = "passive";
       }
     }
   }

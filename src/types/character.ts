@@ -114,6 +114,11 @@ export interface Character {
   currentAction: CharacterAction | null;
   destination: { x: number; y: number } | null;
   turnsUntilArrival: number;
+  
+  // Duty/Patrol status (for guards, hunters, traders)
+  onDuty: boolean;              // Whether currently on patrol/hunting/trading
+  dutyWanderRadius: number;     // How far they patrol from home
+  turnsOnDuty: number;          // How long they've been on duty
 
   // Feudal
   title: string | null;
